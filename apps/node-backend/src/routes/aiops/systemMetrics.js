@@ -18,10 +18,11 @@ router.get('/', async (req, res) => {
       si.mem(),
       si.fsSize(),
     ]);
-
-    // 计算当前时间点
+    // 计算当前时间点（每分钟整点）
     const now = new Date();
-    const currentTime = now.toLocaleTimeString('zh-CN', {
+    // 将时间调整到当前分钟的开始（秒数设为0）
+    const currentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 0);
+    const currentTime = currentMinute.toLocaleTimeString('zh-CN', {
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
@@ -53,14 +54,15 @@ router.get('/', async (req, res) => {
       historicalData.diskData = historicalData.diskData.slice(-maxPoints);
     }
 
-    // 如果数据点不足30个，用模拟数据填充前面的时间点
+    // 生成最近30分钟的性能指标数据（每分钟一个数据点）
     const timePoints = [];
     const cpuData = [];
     const memoryData = [];
     const diskData = [];
 
     for (let i = 29; i >= 0; i--) {
-      const time = new Date(now.getTime() - i * 60000); // 每分钟一个点
+      // 每分钟一个点，从当前分钟开始往前推
+      const time = new Date(currentMinute.getTime() - i * 60000);
       const timeStr = time.toLocaleTimeString('zh-CN', {
         hour12: false,
         hour: '2-digit',

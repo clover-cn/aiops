@@ -1,6 +1,6 @@
 # Vue Vben Admin - Node.js Backend
 
-基于 Node.js + Express 的后端实现，为 vue-vben-admin 项目提供 API 服务。
+基于 Node.js + Express 的后端实现，为 AI Ops 项目提供 API 服务。
 
 ## 功能特性
 

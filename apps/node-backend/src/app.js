@@ -15,7 +15,7 @@ const aiopsRoutes = require('./routes/aiops/index');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// 中间件
 app.use(helmet());
 /**
  * 使用 morgan 记录 HTTP 请求日志
@@ -43,17 +43,17 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Static files for uploads
+// 静态文件用于上传
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Routes
+// 路由
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api', uploadRoutes);
 app.use('/api/aiops', aiopsRoutes);
 
-// Health check
+// 健康检查
 app.get('/api/status', (req, res) => {
   res.json({
     code: 0,
@@ -67,7 +67,7 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// Error handling middleware
+// 错误处理中间件
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
@@ -78,7 +78,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// 404处理程序
 app.use('*', (req, res) => {
   res.status(404).json({
     code: -1,
