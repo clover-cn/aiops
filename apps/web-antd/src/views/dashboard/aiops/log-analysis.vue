@@ -1,6 +1,7 @@
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { Progress, Tag } from 'ant-design-vue';
+import { usePreferences } from '@vben/preferences';
 
 interface LogStat {
   level: 'error' | 'warn' | 'info' | 'debug';
@@ -19,6 +20,36 @@ interface RecentLog {
 
 const logStats = ref<LogStat[]>([]);
 const recentLogs = ref<RecentLog[]>([]);
+const { isDark } = usePreferences();
+
+// 计算主题相关的样式类
+const themeClasses = computed(() => {
+  if (isDark.value) {
+    return {
+      titleColor: 'text-slate-300',
+      textColor: 'text-slate-400',
+      valueColor: 'text-slate-300',
+      cardBg: 'bg-slate-800/30',
+      cardBorder: 'border-slate-700/50',
+      cardHover: 'hover:bg-slate-700/30',
+      progressTrack: 'rgba(71, 85, 105, 0.3)',
+      scrollThumb: 'scrollbar-thumb-slate-600',
+      scrollTrack: 'scrollbar-track-slate-800',
+    };
+  } else {
+    return {
+      titleColor: 'text-gray-700',
+      textColor: 'text-gray-600',
+      valueColor: 'text-gray-800',
+      cardBg: 'bg-gray-50/50',
+      cardBorder: 'border-gray-200/50',
+      cardHover: 'hover:bg-gray-100/50',
+      progressTrack: 'rgba(229, 231, 235, 0.5)',
+      scrollThumb: 'scrollbar-thumb-gray-400',
+      scrollTrack: 'scrollbar-track-gray-200',
+    };
+  }
+});
 
 // 模拟日志统计数据
 const generateLogStats = (): LogStat[] => {
@@ -130,12 +161,12 @@ onUnmounted(() => {
   <div class="h-80 flex flex-col">
     <!-- 日志统计 -->
     <div class="mb-4">
-      <h4 class="text-slate-300 text-sm font-medium mb-3">日志级别统计</h4>
+      <h4 :class="`${themeClasses.titleColor} text-sm font-medium mb-3`">日志级别统计</h4>
       <div class="grid grid-cols-2 gap-3">
         <div v-for="stat in logStats" :key="stat.level" class="space-y-1">
           <div class="flex items-center justify-between text-xs">
-            <span class="text-slate-400">{{ getLevelText(stat.level) }}</span>
-            <span class="text-slate-300">{{ stat.count }}</span>
+            <span :class="themeClasses.textColor">{{ getLevelText(stat.level) }}</span>
+            <span :class="themeClasses.valueColor">{{ stat.count }}</span>
           </div>
           <Progress
             :percent="stat.percentage"
@@ -150,21 +181,21 @@ onUnmounted(() => {
 
     <!-- 最近日志 -->
     <div class="flex-1 overflow-hidden">
-      <h4 class="text-slate-300 text-sm font-medium mb-3">最近日志</h4>
-      <div class="h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800 space-y-2">
+      <h4 :class="`${themeClasses.titleColor} text-sm font-medium mb-3`">最近日志</h4>
+      <div :class="`h-40 overflow-y-auto scrollbar-thin ${themeClasses.scrollThumb} ${themeClasses.scrollTrack} space-y-2`">
         <div
           v-for="log in recentLogs"
           :key="log.id"
-          class="p-2 rounded border border-slate-700/50 bg-slate-800/30 hover:bg-slate-700/30 transition-colors"
+          :class="`p-2 rounded border ${themeClasses.cardBorder} ${themeClasses.cardBg} ${themeClasses.cardHover} transition-colors`"
         >
           <div class="flex items-center justify-between mb-1">
             <Tag :color="getLevelColor(log.level)" class="text-xs px-1 py-0 min-w-0">
               {{ getLevelText(log.level) }}
             </Tag>
-            <span class="text-xs text-slate-500">{{ log.time }}</span>
+            <span :class="`text-xs ${themeClasses.textColor}`">{{ log.time }}</span>
           </div>
-          <p class="text-xs text-slate-300 mb-1 truncate">{{ log.message }}</p>
-          <span class="text-xs text-blue-400">{{ log.service }}</span>
+          <p :class="`text-xs ${themeClasses.valueColor} mb-1 truncate`">{{ log.message }}</p>
+          <span :class="`text-xs ${isDark ? 'text-blue-400' : 'text-blue-600'}`">{{ log.service }}</span>
         </div>
       </div>
     </div>
@@ -176,8 +207,14 @@ onUnmounted(() => {
   border-radius: 2px;
 }
 
-:deep(.ant-progress-outer) {
+/* 深色模式进度条背景 */
+.dark :deep(.ant-progress-outer) {
   background-color: rgba(71, 85, 105, 0.3);
+}
+
+/* 浅色模式进度条背景 */
+:deep(.ant-progress-outer) {
+  background-color: rgba(229, 231, 235, 0.5);
 }
 
 :deep(.ant-tag) {
@@ -193,6 +230,7 @@ onUnmounted(() => {
   scrollbar-width: thin;
 }
 
+/* 深色模式滚动条 */
 .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
   background-color: #475569;
   border-radius: 4px;
@@ -200,6 +238,16 @@ onUnmounted(() => {
 
 .scrollbar-track-slate-800::-webkit-scrollbar-track {
   background-color: #1e293b;
+}
+
+/* 浅色模式滚动条 */
+.scrollbar-thumb-gray-400::-webkit-scrollbar-thumb {
+  background-color: #9ca3af;
+  border-radius: 4px;
+}
+
+.scrollbar-track-gray-200::-webkit-scrollbar-track {
+  background-color: #e5e7eb;
 }
 
 ::-webkit-scrollbar {

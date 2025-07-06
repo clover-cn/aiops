@@ -1,12 +1,14 @@
 <script lang="ts" setup>
 import type { EchartsUIType } from '@vben/plugins/echarts';
 
-import { onMounted, ref, onUnmounted } from 'vue';
+import { onMounted, ref, onUnmounted, computed } from 'vue';
 
 import { EchartsUI, useEcharts } from '@vben/plugins/echarts';
+import { usePreferences } from '@vben/preferences';
 
 const chartRef = ref<EchartsUIType>();
 const { renderEcharts } = useEcharts(chartRef);
+const { isDark } = usePreferences();
 
 let timer: NodeJS.Timeout | null = null;
 
@@ -30,8 +32,32 @@ const generateServiceData = () => {
   }));
 };
 
+// 计算主题相关的颜色配置
+const themeColors = computed(() => {
+  if (isDark.value) {
+    return {
+      tooltipBg: 'rgba(15, 23, 42, 0.9)',
+      tooltipBorder: 'rgba(71, 85, 105, 0.5)',
+      textColor: '#e2e8f0',
+      axisLineColor: 'rgba(71, 85, 105, 0.5)',
+      axisLabelColor: '#94a3b8',
+      splitLineColor: 'rgba(71, 85, 105, 0.2)',
+    };
+  } else {
+    return {
+      tooltipBg: 'rgba(255, 255, 255, 0.95)',
+      tooltipBorder: 'rgba(229, 231, 235, 0.8)',
+      textColor: '#374151',
+      axisLineColor: 'rgba(229, 231, 235, 0.8)',
+      axisLabelColor: '#6b7280',
+      splitLineColor: 'rgba(229, 231, 235, 0.5)',
+    };
+  }
+});
+
 const updateChart = () => {
   const services = generateServiceData();
+  const colors = themeColors.value;
 
   const option = {
     backgroundColor: 'transparent',
@@ -40,10 +66,10 @@ const updateChart = () => {
       axisPointer: {
         type: 'shadow'
       },
-      backgroundColor: 'rgba(15, 23, 42, 0.9)',
-      borderColor: 'rgba(71, 85, 105, 0.5)',
+      backgroundColor: colors.tooltipBg,
+      borderColor: colors.tooltipBorder,
       textStyle: {
-        color: '#e2e8f0'
+        color: colors.textColor
       },
       formatter: function(params: any) {
         const data = params[0];
@@ -63,11 +89,11 @@ const updateChart = () => {
       data: services.map(s => s.name),
       axisLine: {
         lineStyle: {
-          color: 'rgba(71, 85, 105, 0.5)'
+          color: colors.axisLineColor
         }
       },
       axisLabel: {
-        color: '#94a3b8',
+        color: colors.axisLabelColor,
         fontSize: 10,
         rotate: 45
       }
@@ -78,16 +104,16 @@ const updateChart = () => {
       max: 100,
       axisLine: {
         lineStyle: {
-          color: 'rgba(71, 85, 105, 0.5)'
+          color: colors.axisLineColor
         }
       },
       axisLabel: {
-        color: '#94a3b8',
+        color: colors.axisLabelColor,
         formatter: '{value}%'
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(71, 85, 105, 0.2)'
+          color: colors.splitLineColor
         }
       }
     },
@@ -114,7 +140,7 @@ const updateChart = () => {
         label: {
           show: true,
           position: 'top',
-          color: '#e2e8f0',
+          color: colors.textColor,
           fontSize: 10,
           formatter: '{c}%'
         }
