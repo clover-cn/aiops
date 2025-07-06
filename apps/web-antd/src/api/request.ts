@@ -4,7 +4,7 @@
 import type { RequestClientOptions } from '@vben/request';
 
 import { useAppConfig } from '@vben/hooks';
-import { preferences } from '@vben/preferences';
+import { preferences } from '@vben/preferences'; // 全局配置
 import {
   authenticateResponseInterceptor,
   defaultResponseInterceptor,
@@ -65,12 +65,12 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     fulfilled: async (config) => {
       const accessStore = useAccessStore();
       // 打印请求方法和URL
-      console.log('===== 请求信息 =====');
-      console.log(`方法: ${config.method?.toUpperCase()}`);
-      console.log(`URL: ${config.baseURL}${config.url}`);
-      console.log(`URL参数:`, config.params || '无');
-      console.log(`请求体:`, config.data || '无');
-      console.log('===================');
+      // console.log('===== 请求信息 =====');
+      // console.log(`方法: ${config.method?.toUpperCase()}`);
+      // console.log(`URL: ${config.baseURL}${config.url}`);
+      // console.log(`URL参数:`, config.params || '无');
+      // console.log(`请求体:`, config.data || '无');
+      // console.log('===================');
       config.headers.Authorization = formatToken(accessStore.accessToken);
       config.headers['Accept-Language'] = preferences.app.locale;
       return config;
