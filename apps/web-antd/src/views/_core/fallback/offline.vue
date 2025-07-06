@@ -5,5 +5,6 @@ defineOptions({ name: 'FallbackOfflineDemo' });
 </script>
 
 <template>
+  <!-- 页面离线状态 -->
   <Fallback status="offline" />
 </template>
