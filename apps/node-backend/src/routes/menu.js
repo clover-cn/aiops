@@ -1,6 +1,5 @@
 const express = require('express');
-const { useResponseSuccess, useResponseError, unAuthorizedResponse } = require('../utils/response');
-const { verifyAccessToken } = require('../utils/jwt-utils');
+const { useResponseSuccess, useResponseError, jwtAuthMiddleware } = require('../utils/response');
 const { MOCK_MENUS } = require('../utils/mock-data');
 
 const router = express.Router();
@@ -9,16 +8,12 @@ const router = express.Router();
  * 获取菜单接口
  * GET /api/menu/all
  */
-router.get('/all', async (req, res) => {
+router.get('/all', jwtAuthMiddleware, async (req, res) => {
   try {
-    const userinfo = verifyAccessToken(req);
-    
-    if (!userinfo) {
-      return res.status(401).json(unAuthorizedResponse(res));
-    }
+    const userinfo = req.user;
 
     const menus = MOCK_MENUS.find((item) => item.username === userinfo.username)?.menus ?? [];
-    
+
     res.json(useResponseSuccess(menus));
   } catch (error) {
     console.error('Get menu error:', error);

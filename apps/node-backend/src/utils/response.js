@@ -69,7 +69,26 @@ function forbiddenResponse(res, message = 'Forbidden Exception') {
  */
 function unAuthorizedResponse(res) {
   res.status(401);
-  return useResponseError('Unauthorized Exception', 'Unauthorized Exception');
+  return useResponseError('未授权异常', '未授权异常');
+}
+
+/**
+ * JWT令牌验证中间件
+ * @param {object} req - Express请求对象
+ * @param {object} res - Express响应对象
+ * @param {function} next - Express下一个中间件函数
+ */
+function jwtAuthMiddleware(req, res, next) {
+  const { verifyAccessToken } = require('./jwt-utils');
+
+  const user = verifyAccessToken(req);
+  if (!user) {
+    return res.status(401).json(unAuthorizedResponse(res));
+  }
+
+  // 将用户信息添加到请求对象中
+  req.user = user;
+  next();
 }
 
 /**
@@ -101,6 +120,7 @@ module.exports = {
   useResponseError,
   forbiddenResponse,
   unAuthorizedResponse,
+  jwtAuthMiddleware,
   sleep,
   pagination,
 };

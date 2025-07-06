@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const menuRoutes = require('./routes/menu');
 const uploadRoutes = require('./routes/upload');
+const aiopsRoutes = require('./routes/aiops/index');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -50,6 +51,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api', uploadRoutes);
+app.use('/api/aiops', aiopsRoutes);
 
 // Health check
 app.get('/api/status', (req, res) => {

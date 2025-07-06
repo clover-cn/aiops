@@ -2,13 +2,13 @@ const express = require('express');
 const { 
   useResponseSuccess, 
   useResponseError, 
-  forbiddenResponse 
+  forbiddenResponse,
+  jwtAuthMiddleware,
 } = require('../utils/response');
 const {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
-  verifyAccessToken
 } = require('../utils/jwt-utils');
 const { 
   setRefreshTokenCookie, 
@@ -116,13 +116,9 @@ router.post('/logout', async (req, res) => {
  * 获取用户权限码接口
  * GET /api/auth/codes
  */
-router.get('/codes', (req, res) => {
+router.get('/codes', jwtAuthMiddleware, async (req, res) => {
   try {
-    const userinfo = verifyAccessToken(req);
-
-    if (!userinfo) {
-      return res.status(401).json(unAuthorizedResponse(res));
-    }
+    const userinfo = req.user;
 
     const codes = MOCK_CODES.find((item) => item.username === userinfo.username)?.codes ?? [];
 

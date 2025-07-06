@@ -2,8 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { useResponseSuccess, useResponseError, unAuthorizedResponse } = require('../utils/response');
-const { verifyAccessToken } = require('../utils/jwt-utils');
+const { useResponseSuccess, useResponseError, jwtAuthMiddleware } = require('../utils/response');
 
 const router = express.Router();
 
@@ -61,12 +60,7 @@ const upload = multer({
  * 文件上传接口
  * POST /api/upload
  */
-router.post('/upload', (req, res) => {
-  // 验证用户身份
-  const userinfo = verifyAccessToken(req);
-  if (!userinfo) {
-    return res.status(401).json(unAuthorizedResponse(res));
-  }
+router.post('/upload', jwtAuthMiddleware, (req, res) => {
 
   // 使用multer处理文件上传
   upload.single('file')(req, res, function (err) {
@@ -105,13 +99,8 @@ router.post('/upload', (req, res) => {
  * 获取上传文件列表接口（可选）
  * GET /api/upload/list
  */
-router.get('/list', (req, res) => {
+router.get('/upload/list', jwtAuthMiddleware, (req, res) => {
   try {
-    const userinfo = verifyAccessToken(req);
-    if (!userinfo) {
-      return res.status(401).json(unAuthorizedResponse(res));
-    }
-
     fs.readdir(uploadDir, (err, files) => {
       if (err) {
         return res.status(500).json(useResponseError('读取文件列表失败'));
