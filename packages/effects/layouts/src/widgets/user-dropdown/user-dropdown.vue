@@ -198,6 +198,7 @@ if (enableShortcutKey.value) {
     </DropdownMenuTrigger>
     <DropdownMenuContent class="mr-2 min-w-[240px] p-0 pb-1">
       <div ref="refContent">
+          <!-- 菜单内容 -->
         <DropdownMenuLabel class="flex items-center p-3">
           <VbenAvatar
             :alt="text"

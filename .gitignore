@@ -164,16 +164,6 @@ storybook-static
 # Node.js Backend specific
 apps/node-backend/uploads/
 apps/node-backend/test-*.js
-apps/node-backend/.env.production
-apps/node-backend/.env.staging
-
-# Vue Vben Admin specific
-apps/web-antd/.env.production
-apps/web-antd/.env.staging
-apps/web-ele/.env.production
-apps/web-ele/.env.staging
-apps/web-naive/.env.production
-apps/web-naive/.env.staging
 
 # Backend Mock
 apps/backend-mock/.output/

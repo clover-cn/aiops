@@ -39,8 +39,8 @@ const defaultPreferences: Preferences = {
     styleType: 'normal',
   },
   copyright: {
-    companyName: 'Vben',
-    companySiteLink: 'https://www.vben.pro',
+    companyName: 'AI Ops',
+    companySiteLink: 'https://www.webpv.cn',
     date: '2024',
     enable: true,
     icp: '',

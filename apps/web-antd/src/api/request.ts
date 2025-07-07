@@ -4,6 +4,7 @@
 import type { RequestClientOptions } from '@vben/request';
 
 import { useAppConfig } from '@vben/hooks';
+// packages\@core\preferences\src\config.ts // 全局配置
 import { preferences } from '@vben/preferences'; // 全局配置
 import {
   authenticateResponseInterceptor,
