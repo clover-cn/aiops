@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import { Modal, Input, Button, Avatar, Spin, message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { sendChatMessageStream, type ChatMessage as ApiChatMessage } from '#/api/index';
@@ -146,9 +146,9 @@ const simulateAiResponse = async () => {
         messages.value[messageIndex]!.isTyping = false;
         await nextTick();
         scrollToBottom();
-
-        console.log('AI回复完成，最终内容长度:', fullContent.length);
-        console.log('最终内容:', fullContent);
+        input_focus.value?.focus();
+        // console.log('AI回复完成，最终内容长度:', fullContent.length);
+        // console.log('最终内容:', fullContent);
       }
     }
     
@@ -203,6 +203,25 @@ const formatTime = (date: Date) => {
     minute: '2-digit',
   });
 };
+
+const input_focus = ref<HTMLElement | null>(null);
+
+// 监听窗口打开状态
+watch(
+  () => props.visible,
+  (newVisible, oldVisible) => {
+    if (newVisible && !oldVisible) {
+      console.log('AI聊天窗口已打开');
+      nextTick(() => {
+        input_focus.value?.focus();
+      });
+    } else if (!newVisible && oldVisible) {
+      console.log('AI聊天窗口已关闭');
+    }
+  },
+  { immediate: true }
+);
+
 </script>
 
 <template>
@@ -264,6 +283,7 @@ const formatTime = (date: Date) => {
           :rows="3"
           :disabled="loading"
           @keypress="handleKeyPress"
+          ref="input_focus"
         />
         <Button
           type="primary"
