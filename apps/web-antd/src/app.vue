@@ -7,6 +7,7 @@ import { preferences, usePreferences } from '@vben/preferences';
 import { App, ConfigProvider, theme } from 'ant-design-vue';
 
 import { antdLocale } from '#/locales';
+import AiChatFloat from '#/components/AiChatFloat.vue';
 
 defineOptions({ name: 'App' });
 
@@ -34,6 +35,8 @@ const tokenTheme = computed(() => {
   <ConfigProvider :locale="antdLocale" :theme="tokenTheme">
     <App>
       <RouterView />
+      <!-- AI聊天悬浮按钮 -->
+      <AiChatFloat />
     </App>
   </ConfigProvider>
 </template>
