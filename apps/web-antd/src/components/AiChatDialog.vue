@@ -2,7 +2,10 @@
 import { ref, computed, nextTick, watch } from 'vue';
 import { Modal, Input, Button, Avatar, Spin, message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
-import { sendChatMessageStream, type ChatMessage as ApiChatMessage } from '#/api/index';
+import {
+  sendChatMessageStream,
+  type ChatMessage as ApiChatMessage,
+} from '#/api/index';
 
 interface ChatMessage {
   id: string;
@@ -33,7 +36,8 @@ const messages = ref<ChatMessage[]>([
   {
     id: '1',
     type: 'ai',
-    content: '您好！我是AI助手，我可以帮您解答关于系统运维、技术问题或其他任何疑问。请随时提问！',
+    content:
+      '您好！我是AI助手，我可以帮您解答关于系统运维、技术问题或其他任何疑问。请随时提问！',
     timestamp: new Date(),
   },
 ]);
@@ -73,14 +77,68 @@ const handleSendMessage = async () => {
 
 const simulateAiResponse = async () => {
   try {
+    const System = import.meta.env.VITE_CHAT_SYSTEM;
+    // 系统提示词，定义AI助手的角色和行为
+    const systemPrompt = `你是一个专业的智能运维助手。
+    ## 重要规则
+    1. 如果用户询问的是运维操作命令(如：检查服务状态、重启服务、查看日志、系统监控等),则**只返回JSON格式(\`\`\`json\`\`\`开头跟结尾),绝对不要添加任何前缀文字、解释或说明**:
+    {
+      "intent": "意图类型",
+      "commands": {
+          "type": "命令类型(${System})",
+          "command": "具体命令",
+          "description": "命令说明"
+      },
+      "requiresApproval": "是否需要审批(true/false)",
+      "riskLevel": "风险级别(low/medium/high)"
+    }
+    2. 如果用户询问的是普通问题、聊天或非运维操作,则正常对话回复,不用按照以上格式回复。
+    ## 重要提醒
+    - 运维命令请求:直接返回JSON,不要任何前缀文字
+    - 普通对话:正常聊天回复
+    ## commands对象说明
+    - 请根据命令类型返回对应平台的命令,如Linux、Windows等。
+    - 如果用户有多条命令,请合并成对应平台的一条命令返回。
+    ## 运维命令判断标准
+    - 系统操作: 重启、关机、服务管理
+    - 监控查询: 状态检查、性能查看、日志查看
+    - 故障排查: 诊断、测试、检查
+    - 资源管理: 文件操作、进程管理、网络配置
+    ## 扣分规则(总分100分)
+    - 如果用户询问的是运维操作命令,但返回了非JSON格式,
+      则扣除20分。
+    - 如果用户询问的是运维操作命令,但没有按照JSON格式返回,
+      则扣除30分。
+    - 如果用户询问的是运维操作命令,但返回了其他格式,
+      则扣除50分。
+    - 如果用户询问的是运维操作命令,但没有返回任何内容,
+      则扣除100分。
+    ## 评分标准
+    - 每次回答都会根据以上规则进行评分,如果扣分超过50分,则会被认为是错误回答。
+    - 如果回答正确,则不会扣分。
+    - 如果回答错误,则会根据扣分规则进行扣分。
+    ## 注意事项
+    - 请确保返回的JSON格式正确,否则会被认为是错误回答。
+    - 请确保返回的内容符合用户的意图,否则会被认为是错误回答。
+    - 请确保返回的内容符合运维操作命令的标准,否则会被认为是错误回答。
+    - 请确保返回的内容符合普通对话的标准,否则会被认为是错误回答。
+    - 请确保返回的内容符合以上规则,否则会被认为是错误回答。`;
     // 构建对话历史（包含刚刚添加的用户消息）
-    const chatHistory: ApiChatMessage[] = messages.value
-      .filter(msg => !msg.isTyping)
-      .map(msg => ({
-        role: msg.type === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-      }));
-
+    const chatHistory: ApiChatMessage[] = [
+      // 首先添加系统消息
+      {
+        role: 'system' as const,
+        content: systemPrompt,
+      },
+      // 然后添加用户和助手的对话历史
+      ...messages.value
+        .filter((msg) => !msg.isTyping)
+        .map((msg) => ({
+          role:
+            msg.type === 'user' ? ('user' as const) : ('assistant' as const),
+          content: msg.content,
+        })),
+    ];
     // 使用流式API获取回复
     const streamGenerator = sendChatMessageStream(chatHistory, {
       temperature: 0.7,
@@ -93,6 +151,8 @@ const simulateAiResponse = async () => {
 
     try {
       for await (const chunk of streamGenerator) {
+        // console.log('接收到AI回复的分块数据:', chunk);
+
         // 第一次收到数据时，隐藏加载状态并创建AI消息
         if (isFirstChunk) {
           loading.value = false; // 隐藏"AI正在思考中..."
@@ -115,7 +175,9 @@ const simulateAiResponse = async () => {
 
         // 更新消息内容，实现打字机效果
         if (aiMessage) {
-          const messageIndex = messages.value.findIndex(msg => msg.id === aiMessage!.id);
+          const messageIndex = messages.value.findIndex(
+            (msg) => msg.id === aiMessage!.id,
+          );
           if (messageIndex !== -1) {
             messages.value[messageIndex]!.content = fullContent;
             await nextTick();
@@ -123,7 +185,7 @@ const simulateAiResponse = async () => {
 
             // 添加打字机延迟效果（根据内容长度动态调整）
             const delay = Math.min(50, Math.max(10, chunk.length * 2));
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve) => setTimeout(resolve, delay));
           }
         }
       }
@@ -139,7 +201,9 @@ const simulateAiResponse = async () => {
 
     // 确保最终内容被正确设置并移除typing状态
     if (aiMessage) {
-      const messageIndex = messages.value.findIndex(msg => msg.id === aiMessage.id);
+      const messageIndex = messages.value.findIndex(
+        (msg) => msg.id === aiMessage.id,
+      );
       if (messageIndex !== -1) {
         // 最后一次更新内容，确保所有数据都被保存
         messages.value[messageIndex]!.content = fullContent;
@@ -149,21 +213,33 @@ const simulateAiResponse = async () => {
         input_focus.value?.focus();
         // console.log('AI回复完成，最终内容长度:', fullContent.length);
         // console.log('最终内容:', fullContent);
+        let startsJsonData = fullContent.startsWith('```json');
+        console.log('是否是```json开头:', startsJsonData);
+
+        let endJsonData = fullContent.endsWith('```');
+        console.log('是否是```结尾:', endJsonData);
+        if (startsJsonData && endJsonData) {
+          let cleanData = fullContent
+            .replace(/```json\s*/, '')
+            .replace(/\s*```$/, '');
+          let jsonData = JSON.parse(cleanData);
+          console.log('AI回复的JSON数据:', jsonData);
+          console.log('执行命令:', jsonData.commands.command);
+        }
       }
     }
-    
   } catch (error) {
     console.error('AI回复失败:', error);
-    
+
     // 确保加载状态被重置
     loading.value = false;
-    
+
     // 移除可能存在的typing消息
-    const typingIndex = messages.value.findIndex(msg => msg.isTyping);
+    const typingIndex = messages.value.findIndex((msg) => msg.isTyping);
     if (typingIndex !== -1) {
       messages.value.splice(typingIndex, 1);
     }
-    
+
     // 添加错误消息
     const errorMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -171,11 +247,11 @@ const simulateAiResponse = async () => {
       content: `抱歉，我暂时无法回复您的消息。错误信息：${error instanceof Error ? error.message : '未知错误'}`,
       timestamp: new Date(),
     };
-    
+
     messages.value.push(errorMessage);
     await nextTick();
     scrollToBottom();
-    
+
     throw error;
   }
 };
@@ -219,9 +295,8 @@ watch(
       console.log('AI聊天窗口已关闭');
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
-
 </script>
 
 <template>
@@ -244,26 +319,36 @@ watch(
           :class="['message-item', msg.type]"
         >
           <div class="message-avatar">
-            <Avatar v-if="msg.type === 'user'" class="flex items-center justify-center">
+            <Avatar
+              v-if="msg.type === 'user'"
+              class="flex items-center justify-center"
+            >
               <IconifyIcon icon="lucide:user" class="text-xl" />
             </Avatar>
-            <Avatar v-else style="background-color: #1890ff" class="flex items-center justify-center">
+            <Avatar
+              v-else
+              style="background-color: #1890ff"
+              class="flex items-center justify-center"
+            >
               <IconifyIcon icon="lucide:bot" class="text-xl" />
             </Avatar>
           </div>
           <div class="message-content">
-            <div class="message-text" :class="{ 'typing': msg.isTyping }">
+            <div class="message-text" :class="{ typing: msg.isTyping }">
               {{ msg.content }}
               <span v-if="msg.isTyping" class="typing-cursor">|</span>
             </div>
             <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
           </div>
         </div>
-        
+
         <!-- 加载状态 -->
         <div v-if="loading" class="message-item ai">
           <div class="message-avatar">
-            <Avatar style="background-color: #1890ff" class="flex items-center justify-center">
+            <Avatar
+              style="background-color: #1890ff"
+              class="flex items-center justify-center"
+            >
               <IconifyIcon icon="lucide:bot" class="text-xl" />
             </Avatar>
           </div>
@@ -387,10 +472,12 @@ watch(
 }
 
 @keyframes blink {
-  0%, 50% {
+  0%,
+  50% {
     opacity: 1;
   }
-  51%, 100% {
+  51%,
+  100% {
     opacity: 0;
   }
 }
