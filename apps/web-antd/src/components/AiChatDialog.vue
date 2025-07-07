@@ -2,11 +2,14 @@
 import { ref, computed, nextTick } from 'vue';
 import { Modal, Input, Button, Avatar, Spin, message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
+import { sendChatMessageStream, type ChatMessage as ApiChatMessage } from '#/api/index';
+
 interface ChatMessage {
   id: string;
   type: 'user' | 'ai';
   content: string;
   timestamp: Date;
+  isTyping?: boolean;
 }
 
 defineOptions({ name: 'AiChatDialog' });
@@ -30,7 +33,7 @@ const messages = ref<ChatMessage[]>([
   {
     id: '1',
     type: 'ai',
-    content: '您好！我是AI助手，有什么可以帮助您的吗？',
+    content: '您好！我是AI助手，我可以帮您解答关于系统运维、技术问题或其他任何疑问。请随时提问！',
     timestamp: new Date(),
   },
 ]);
@@ -50,39 +53,131 @@ const handleSendMessage = async () => {
   };
 
   messages.value.push(userMessage);
-  const currentInput = inputMessage.value;
   inputMessage.value = '';
 
   // 滚动到底部
   await nextTick();
   scrollToBottom();
 
-  // 模拟AI回复
+  // AI回复
   loading.value = true;
   try {
-    // 这里可以替换为实际的AI API调用
-    await simulateAiResponse(currentInput);
+    await simulateAiResponse();
   } catch (error) {
-    message.error('发送消息失败，请重试');
+    message.error('AI回复失败，请重试');
   } finally {
+    // 确保loading状态被清除（虽然在simulateAiResponse中也会设置）
     loading.value = false;
   }
 };
 
-const simulateAiResponse = async (userInput: string) => {
-  // 模拟网络延迟
-  await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-  
-  const aiMessage: ChatMessage = {
-    id: Date.now().toString(),
-    type: 'ai',
-    content: `我收到了您的消息："${userInput}"。这是一个模拟回复，您可以在这里集成真实的AI API。`,
-    timestamp: new Date(),
-  };
+const simulateAiResponse = async () => {
+  try {
+    // 构建对话历史（包含刚刚添加的用户消息）
+    const chatHistory: ApiChatMessage[] = messages.value
+      .filter(msg => !msg.isTyping)
+      .map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      }));
 
-  messages.value.push(aiMessage);
-  await nextTick();
-  scrollToBottom();
+    // 使用流式API获取回复
+    const streamGenerator = sendChatMessageStream(chatHistory, {
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
+
+    let fullContent = '';
+    let aiMessage: ChatMessage | null = null;
+    let isFirstChunk = true;
+
+    try {
+      for await (const chunk of streamGenerator) {
+        // 第一次收到数据时，隐藏加载状态并创建AI消息
+        if (isFirstChunk) {
+          loading.value = false; // 隐藏"AI正在思考中..."
+
+          aiMessage = {
+            id: Date.now().toString(),
+            type: 'ai',
+            content: '',
+            timestamp: new Date(),
+            isTyping: true,
+          };
+
+          messages.value.push(aiMessage);
+          await nextTick();
+          scrollToBottom();
+          isFirstChunk = false;
+        }
+
+        fullContent += chunk;
+
+        // 更新消息内容，实现打字机效果
+        if (aiMessage) {
+          const messageIndex = messages.value.findIndex(msg => msg.id === aiMessage!.id);
+          if (messageIndex !== -1) {
+            messages.value[messageIndex]!.content = fullContent;
+            await nextTick();
+            scrollToBottom();
+
+            // 添加打字机延迟效果（根据内容长度动态调整）
+            const delay = Math.min(50, Math.max(10, chunk.length * 2));
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+    } catch (streamError) {
+      console.error('流式数据处理错误:', streamError);
+      // 如果流式处理出错，但已经有部分内容，保留已有内容
+      if (aiMessage && fullContent) {
+        console.log('保留已接收的内容:', fullContent);
+      } else {
+        throw streamError; // 如果没有任何内容，重新抛出错误
+      }
+    }
+
+    // 确保最终内容被正确设置并移除typing状态
+    if (aiMessage) {
+      const messageIndex = messages.value.findIndex(msg => msg.id === aiMessage.id);
+      if (messageIndex !== -1) {
+        // 最后一次更新内容，确保所有数据都被保存
+        messages.value[messageIndex]!.content = fullContent;
+        messages.value[messageIndex]!.isTyping = false;
+        await nextTick();
+        scrollToBottom();
+
+        console.log('AI回复完成，最终内容长度:', fullContent.length);
+        console.log('最终内容:', fullContent);
+      }
+    }
+    
+  } catch (error) {
+    console.error('AI回复失败:', error);
+    
+    // 确保加载状态被重置
+    loading.value = false;
+    
+    // 移除可能存在的typing消息
+    const typingIndex = messages.value.findIndex(msg => msg.isTyping);
+    if (typingIndex !== -1) {
+      messages.value.splice(typingIndex, 1);
+    }
+    
+    // 添加错误消息
+    const errorMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: 'ai',
+      content: `抱歉，我暂时无法回复您的消息。错误信息：${error instanceof Error ? error.message : '未知错误'}`,
+      timestamp: new Date(),
+    };
+    
+    messages.value.push(errorMessage);
+    await nextTick();
+    scrollToBottom();
+    
+    throw error;
+  }
 };
 
 const scrollToBottom = () => {
@@ -138,7 +233,10 @@ const formatTime = (date: Date) => {
             </Avatar>
           </div>
           <div class="message-content">
-            <div class="message-text">{{ msg.content }}</div>
+            <div class="message-text" :class="{ 'typing': msg.isTyping }">
+              {{ msg.content }}
+              <span v-if="msg.isTyping" class="typing-cursor">|</span>
+            </div>
             <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
           </div>
         </div>
@@ -232,6 +330,7 @@ const formatTime = (date: Date) => {
   border-radius: 8px;
   word-wrap: break-word;
   line-height: 1.5;
+  color: hsl(var(--foreground));
 }
 
 .message-item.user .message-text {
@@ -245,12 +344,52 @@ const formatTime = (date: Date) => {
   margin-top: 4px;
 }
 
+/* 深色模式适配 */
+.dark .message-text {
+  background: #3d3d5c;
+  color: hsl(var(--foreground));
+}
+
+.dark .message-item.user .message-text {
+  background: #1890ff;
+  color: white;
+}
+
+.dark .message-time {
+  color: hsl(var(--muted-foreground));
+}
+
+/* 打字机效果 */
+.typing-cursor {
+  animation: blink 1s infinite;
+  font-weight: bold;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+.message-text.typing {
+  position: relative;
+}
+
 .input-area {
   display: flex;
   gap: 8px;
   align-items: flex-end;
   padding-top: 16px;
   border-top: 1px solid #f0f0f0;
+}
+
+/* 深色模式下的输入区域 */
+.dark .input-area {
+  border-top: 1px solid hsl(var(--border));
 }
 
 .input-area .ant-input {
@@ -276,6 +415,19 @@ const formatTime = (date: Date) => {
   background: #a8a8a8;
 }
 
+/* 深色模式下的滚动条 */
+.dark .messages-container::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+.dark .messages-container::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+.dark .messages-container::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
 /* 模态框样式优化 */
 :deep(.ai-chat-modal .ant-modal-header) {
   background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
@@ -299,6 +451,18 @@ const formatTime = (date: Date) => {
 :deep(.ai-chat-modal .ant-modal-content) {
   border-radius: 8px;
   overflow: hidden;
+  background: hsl(var(--background));
+}
+
+/* 深色模式下的模态框 */
+.dark :deep(.ai-chat-modal .ant-modal-content) {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.dark :deep(.ai-chat-modal .ant-modal-body) {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 /* 消息动画 */
