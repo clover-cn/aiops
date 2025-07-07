@@ -5,20 +5,12 @@
       "path": "apps/backend-mock",
     },
     {
+      "name": "@vben/node-backend",
+      "path": "apps/node-backend",
+    },
+    {
       "name": "@vben/web-antd",
       "path": "apps/web-antd",
-    },
-    {
-      "name": "@vben/web-ele",
-      "path": "apps/web-ele",
-    },
-    {
-      "name": "@vben/web-naive",
-      "path": "apps/web-naive",
-    },
-    {
-      "name": "@vben/docs",
-      "path": "docs",
     },
     {
       "name": "@vben/commitlint-config",
