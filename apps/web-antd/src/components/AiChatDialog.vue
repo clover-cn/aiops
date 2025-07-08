@@ -78,6 +78,112 @@ const handleSendMessage = async () => {
   }
 };
 
+// 生成AI对命令结果的总结
+const generateCommandSummary = async (commandData: any, commandOutput: string) => {
+  try {
+    // 构建总结提示词
+    const summaryPrompt = `请对以下命令执行结果进行分析和总结，用简洁明了的中文回复用户：
+
+    命令信息：
+    - 命令类型：${commandData.commands.type}
+    - 执行命令：${commandData.commands.command}
+    - 命令描述：${commandData.commands.description}
+
+    执行结果：
+    ${commandOutput}
+
+    请分析这个结果并给出：
+    1. 命令执行状态（成功/失败）
+    2. 关键信息摘要
+    3. 如果有异常或需要注意的地方，请指出
+    4. 如果是系统监控类命令，请解读关键指标
+
+    请用友好、专业的语气回复，不要重复显示原始命令输出。`;
+
+    const summaryHistory: ApiChatMessage[] = [
+      {
+        role: 'system' as const,
+        content: '你是一个专业的运维助手，擅长分析命令执行结果并给出简洁明了的总结。请用中文回复，语气要友好专业。',
+      },
+      {
+        role: 'user' as const,
+        content: summaryPrompt,
+      },
+    ];
+
+    // 使用流式API获取总结
+    const summaryGenerator = sendChatMessageStream(summaryHistory, {
+      temperature: 0.3,
+      max_tokens: 1000,
+    });
+
+    let summaryContent = '';
+    let summaryMessage: ChatMessage | null = null;
+    let isFirstChunk = true;
+
+    for await (const chunk of summaryGenerator) {
+      // 第一次收到数据时创建总结消息
+      if (isFirstChunk) {
+        summaryMessage = {
+          id: Date.now().toString() + '_summary',
+          type: 'ai',
+          content: '',
+          timestamp: new Date(),
+          isTyping: true,
+        };
+
+        messages.value.push(summaryMessage);
+        await nextTick();
+        scrollToBottom();
+        isFirstChunk = false;
+      }
+
+      summaryContent += chunk;
+
+      // 更新消息内容，实现打字机效果
+      if (summaryMessage) {
+        const messageIndex = messages.value.findIndex(
+          (msg) => msg.id === summaryMessage!.id,
+        );
+        if (messageIndex !== -1) {
+          messages.value[messageIndex]!.content = summaryContent;
+          await nextTick();
+          scrollToBottom();
+
+          // 添加打字机延迟效果
+          const delay = Math.min(30, Math.max(10, chunk.length * 2));
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // 完成总结，移除typing状态
+    if (summaryMessage) {
+      const messageIndex = messages.value.findIndex(
+        (msg) => msg.id === summaryMessage.id,
+      );
+      if (messageIndex !== -1) {
+        messages.value[messageIndex]!.content = summaryContent;
+        messages.value[messageIndex]!.isTyping = false;
+        await nextTick();
+        scrollToBottom();
+      }
+    }
+  } catch (error) {
+    console.error('生成命令总结失败:', error);
+    // 如果总结失败，添加一个简单的提示消息
+    const errorSummaryMessage: ChatMessage = {
+      id: Date.now().toString() + '_summary_error',
+      type: 'ai',
+      content: '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。',
+      timestamp: new Date(),
+    };
+    messages.value.push(errorSummaryMessage);
+    await nextTick();
+    scrollToBottom();
+  }
+};
+
 const simulateAiResponse = async () => {
   try {
     const System = import.meta.env.VITE_CHAT_SYSTEM;
@@ -271,6 +377,9 @@ const simulateAiResponse = async () => {
           messages.value.push(resultMessage);
           await nextTick();
           scrollToBottom();
+
+          // 生成AI对命令结果的总结
+          await generateCommandSummary(jsonData, res.result.output);
         }
       }
     }
