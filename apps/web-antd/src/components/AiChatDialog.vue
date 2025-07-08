@@ -229,6 +229,14 @@ const simulateAiResponse = async () => {
           console.log('AI回复的JSON数据:', jsonData);
           console.log('执行命令:', jsonData.commands.command);
 
+          // 移除包含JSON数据的AI消息，直接显示执行状态
+          const jsonMessageIndex = messages.value.findIndex(
+            (msg) => msg.id === aiMessage.id,
+          );
+          if (jsonMessageIndex !== -1) {
+            messages.value.splice(jsonMessageIndex, 1);
+          }
+
           // 添加正在执行命令的消息
           const executingMessage: ChatMessage = {
             id: Date.now().toString() + '_executing',
