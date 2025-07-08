@@ -245,29 +245,24 @@ const simulateAiResponse = async () => {
           scrollToBottom();
           let res = await getExecuteCommandApi(jsonData.commands.command);
           console.log('命令执行结果:', res);
-          // 模拟命令执行过程
-          // setTimeout(async () => {
-          //   // 移除执行中的消息
-          //   const executingIndex = messages.value.findIndex(msg => msg.id === executingMessage.id);
-          //   if (executingIndex !== -1) {
-          //     messages.value.splice(executingIndex, 1);
-          //   }
-
-          //   // 添加执行结果消息
-          //   const resultMessage: ChatMessage = {
-          //     id: Date.now().toString() + '_result',
-          //     type: 'ai',
-          //     content: `命令执行完成！\n\n执行的命令: ${jsonData.commands.command}\n\n模拟执行结果:\n- 服务状态: 正常运行\n- CPU使用率: 45%\n- 内存使用率: 62%\n- 磁盘使用率: 78%\n\n执行时间: ${new Date().toLocaleString()}`,
-          //     timestamp: new Date(),
-          //     isTyping: false,
-          //     isServerCommand: true,
-          //     commandData: jsonData,
-          //   };
-
-          //   messages.value.push(resultMessage);
-          //   await nextTick();
-          //   scrollToBottom();
-          // }, 3000); // 3秒后显示结果
+          // 移除执行中的消息
+          const executingIndex = messages.value.findIndex(msg => msg.id === executingMessage.id);
+          if (executingIndex !== -1) {
+            messages.value.splice(executingIndex, 1);
+          }
+          // 添加执行结果消息
+          const resultMessage: ChatMessage = {
+            id: Date.now().toString() + '_result',
+            type: 'ai',
+            content: res.result.output,
+            timestamp: new Date(),
+            isTyping: false,
+            isServerCommand: true,
+            commandData: jsonData,
+          };
+          messages.value.push(resultMessage);
+          await nextTick();
+          scrollToBottom();
         }
       }
     }
