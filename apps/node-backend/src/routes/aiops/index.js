@@ -4,11 +4,13 @@ const { jwtAuthMiddleware } = require('../../utils/response'); // 引入JWT验�
 
 // 引入子路由
 const systemMetricsRoutes = require('./systemMetrics');
+const runnerRoutes = require('./runner');
 
 // 对所有aiops路由应用JWT验证
 router.use(jwtAuthMiddleware);
 
 // 使用子路由
 router.use('/system-metrics', systemMetricsRoutes);
+router.use('/runner', runnerRoutes);
 
 module.exports = router;

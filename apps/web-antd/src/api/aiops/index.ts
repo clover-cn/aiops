@@ -1,10 +1,10 @@
 import { requestClient } from '#/api/request';
 
 export interface SystemMetrics {
-  timePoints: string[]
-  cpuData: number[]
-  memoryData: number[]
-  diskData: number[]
+  timePoints: string[];
+  cpuData: number[];
+  memoryData: number[];
+  diskData: number[];
 }
 
 /**
@@ -12,4 +12,11 @@ export interface SystemMetrics {
  */
 export async function getSystemMetricsApi() {
   return requestClient.get<SystemMetrics>('/aiops/system-metrics');
+}
+/**
+ * 获取命令执行结果
+ */
+export async function getExecuteCommandApi(command: string) {
+  // return requestClient.get('/aiops/runner', { params: { data: req } });
+  return requestClient.post('/aiops/runner', { command });
 }
