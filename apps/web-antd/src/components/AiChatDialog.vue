@@ -13,6 +13,9 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isTyping?: boolean;
+  isExecuting?: boolean;
+  isServerCommand?: boolean;
+  commandData?: any;
 }
 
 defineOptions({ name: 'AiChatDialog' });
@@ -225,6 +228,45 @@ const simulateAiResponse = async () => {
           let jsonData = JSON.parse(cleanData);
           console.log('AI回复的JSON数据:', jsonData);
           console.log('执行命令:', jsonData.commands.command);
+
+          // 添加正在执行命令的消息
+          const executingMessage: ChatMessage = {
+            id: Date.now().toString() + '_executing',
+            type: 'ai',
+            content: '',
+            timestamp: new Date(),
+            isTyping: false,
+            isExecuting: true,
+            commandData: jsonData,
+          };
+
+          messages.value.push(executingMessage);
+          await nextTick();
+          scrollToBottom();
+
+          // 模拟命令执行过程
+          setTimeout(async () => {
+            // 移除执行中的消息
+            const executingIndex = messages.value.findIndex(msg => msg.id === executingMessage.id);
+            if (executingIndex !== -1) {
+              messages.value.splice(executingIndex, 1);
+            }
+
+            // 添加执行结果消息
+            const resultMessage: ChatMessage = {
+              id: Date.now().toString() + '_result',
+              type: 'ai',
+              content: `命令执行完成！\n\n执行的命令: ${jsonData.commands.command}\n\n模拟执行结果:\n- 服务状态: 正常运行\n- CPU使用率: 45%\n- 内存使用率: 62%\n- 磁盘使用率: 78%\n\n执行时间: ${new Date().toLocaleString()}`,
+              timestamp: new Date(),
+              isTyping: false,
+              isServerCommand: true,
+              commandData: jsonData,
+            };
+
+            messages.value.push(resultMessage);
+            await nextTick();
+            scrollToBottom();
+          }, 3000); // 3秒后显示结果
         }
       }
     }
@@ -334,14 +376,38 @@ watch(
             </Avatar>
           </div>
           <div class="message-content">
-            <div class="message-text" :class="{ typing: msg.isTyping }">
+            <!-- 正在执行命令的UI -->
+            <div v-if="msg.isExecuting" class="message-text executing-command">
+              <div class="executing-header">
+                <IconifyIcon icon="lucide:terminal" class="mr-2" />
+                <Spin size="small" class="mr-2" />
+                正在执行命令...
+              </div>
+              <div class="command-info">
+                <div class="command-title">命令类型: {{ msg.commandData?.commands?.type }}</div>
+                <div class="command-desc">{{ msg.commandData?.commands?.description }}</div>
+                <div class="command-text">{{ msg.commandData?.commands?.command }}</div>
+                <div class="risk-level" :class="msg.commandData?.riskLevel">
+                  风险级别: {{ msg.commandData?.riskLevel?.toUpperCase() }}
+                </div>
+              </div>
+            </div>
+            <!-- 服务器命令结果UI -->
+            <div v-else-if="msg.isServerCommand" class="message-text server-command">
+              <div class="server-command-header">
+                <IconifyIcon icon="lucide:check-circle" class="mr-2" />
+                命令执行完成
+              </div>
+              <pre class="server-output">{{ msg.content }}</pre>
+            </div>
+            <!-- 普通消息UI -->
+            <div v-else class="message-text" :class="{ typing: msg.isTyping }">
               {{ msg.content }}
               <span v-if="msg.isTyping" class="typing-cursor">|</span>
             </div>
             <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
           </div>
         </div>
-
         <!-- 加载状态 -->
         <div v-if="loading" class="message-item ai">
           <div class="message-avatar">
@@ -616,7 +682,184 @@ watch(
 
 :deep(.ant-avatar .iconify) {
   display: flex;
+}
+
+/* 正在执行命令样式 */
+.executing-command {
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 6px;
+  padding: 12px;
+  animation: pulse-orange 2s infinite;
+}
+
+.dark .executing-command {
+  background: #2b1d0e;
+  border-color: #d4b106;
+}
+
+.executing-header {
+  display: flex;
   align-items: center;
-  justify-content: center;
+  color: #fa8c16;
+  font-weight: 500;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.dark .executing-header {
+  color: #ffa940;
+}
+
+.command-info {
+  background: #fafafa;
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.dark .command-info {
+  background: #1f1f1f;
+}
+
+.command-title {
+  font-weight: 500;
+  color: #262626;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.dark .command-title {
+  color: #e6edf3;
+}
+
+.command-desc {
+  color: #595959;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.dark .command-desc {
+  color: #8b949e;
+}
+
+.command-text {
+  background: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.dark .command-text {
+  background: #161b22;
+  border-color: #30363d;
+  color: #e6edf3;
+}
+
+.risk-level {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.risk-level.low {
+  background: #f6ffed;
+  color: #52c41a;
+  border: 1px solid #b7eb8f;
+}
+
+.risk-level.medium {
+  background: #fff7e6;
+  color: #fa8c16;
+  border: 1px solid #ffd591;
+}
+
+.risk-level.high {
+  background: #fff2f0;
+  color: #ff4d4f;
+  border: 1px solid #ffccc7;
+}
+
+.dark .risk-level.low {
+  background: #162312;
+  color: #73d13d;
+  border-color: #389e0d;
+}
+
+.dark .risk-level.medium {
+  background: #2b1d0e;
+  color: #ffa940;
+  border-color: #d4b106;
+}
+
+.dark .risk-level.high {
+  background: #2a1215;
+  color: #ff7875;
+  border-color: #a8071a;
+}
+
+@keyframes pulse-orange {
+  0% {
+    box-shadow: 0 0 0 0 rgba(250, 140, 22, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(250, 140, 22, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(250, 140, 22, 0);
+  }
+}
+
+/* 服务器命令结果样式 */
+.server-command {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.dark .server-command {
+  background: #161b22;
+  border-color: #30363d;
+}
+
+.server-command-header {
+  display: flex;
+  align-items: center;
+  color: #28a745;
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.dark .server-command-header {
+  color: #3fb950;
+}
+
+.server-output {
+  background: #f8f9fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dark .server-output {
+  background: #0d1117;
+  border-color: #30363d;
+  color: #e6edf3;
 }
 </style>
