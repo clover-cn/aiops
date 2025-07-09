@@ -213,7 +213,8 @@ const simulateAiResponse = async () => {
         "description": "命令说明"
       },
       "requiresApproval": true/false,
-      "riskLevel": "low/medium/high"
+      "riskLevel": "low/medium/high",
+      "isCommand": true
     }
     \`\`\`
     **普通对话**：直接自然语言回复
@@ -317,72 +318,67 @@ const simulateAiResponse = async () => {
         input_focus.value?.focus();
         // console.log('AI回复完成，最终内容长度:', fullContent.length);
         // console.log('最终内容:', fullContent);
-        let startsJsonData = fullContent.startsWith('```json');
-        console.log('是否是```json开头:', startsJsonData);
-
-        let endJsonData = fullContent.endsWith('```');
-        console.log('是否是```结尾:', endJsonData);
-        if (startsJsonData && endJsonData) {
-          let cleanData = fullContent
-            .replace(/```json\s*/, '')
-            .replace(/\s*```$/, '');
-          let jsonData = JSON.parse(cleanData);
-          console.log('AI回复的JSON数据:', jsonData);
-          console.log('执行命令:', jsonData.commands.command);
-
-          // 移除包含JSON数据的AI消息，直接显示执行状态
-          const jsonMessageIndex = messages.value.findIndex(
-            (msg) => msg.id === aiMessage.id,
-          );
-          if (jsonMessageIndex !== -1) {
-            messages.value.splice(jsonMessageIndex, 1);
-          }
-
-          // 添加正在执行命令的消息
-          const executingMessage: ChatMessage = {
-            id: Date.now().toString() + '_executing',
-            type: 'ai',
-            content: '',
-            timestamp: new Date(),
-            isTyping: false,
-            isExecuting: true,
-            commandData: jsonData,
-          };
-
-          messages.value.push(executingMessage);
-          await nextTick();
-          scrollToBottom();
-          let res = await getExecuteCommandApi(jsonData.commands.command);
-          console.log('命令执行结果:', res);
-          // 移除执行中的消息
-          const executingIndex = messages.value.findIndex(msg => msg.id === executingMessage.id);
-          if (executingIndex !== -1) {
-            messages.value.splice(executingIndex, 1);
-          }
-          const Command = `${jsonData.commands.type}命令执行结果:
-  - 命令: ${jsonData.commands.command}
-  - 描述: ${jsonData.commands.description}
-  - 风险级别: ${jsonData.riskLevel}
-  - 执行结果: ${res.result.output || '无输出'}
-  - 执行状态: ${res.result.success ? '成功' : '失败'}
-  - 执行时间: ${res.result.timestamp}`
-          // 添加执行结果消息
-          const resultMessage: ChatMessage = {
-            id: Date.now().toString() + '_result',
-            type: 'ai',
-            content: res.result.output || Command,
-            timestamp: new Date(),
-            isTyping: false,
-            isServerCommand: true,
-            commandData: jsonData,
-          };
-          messages.value.push(resultMessage);
-          await nextTick();
-          scrollToBottom();
-
-          if (res.result.output) {
-            // 生成AI对命令结果的总结
-            await generateCommandSummary(jsonData, res.result.output);
+        const match = fullContent.match(/```json([\s\S]*?)```/);
+        if (match) {
+          const jsonContent = match?.[1]?.trim();
+          let jsonData = JSON.parse(jsonContent as string);
+          if (jsonData.isCommand) {
+            console.log('AI回复的JSON数据:', jsonData);
+            console.log('执行命令:', jsonData.commands.command);
+            // 移除包含JSON数据的AI消息，直接显示执行状态
+            const jsonMessageIndex = messages.value.findIndex(
+              (msg) => msg.id === aiMessage.id,
+            );
+            if (jsonMessageIndex !== -1) {
+              messages.value.splice(jsonMessageIndex, 1);
+            }
+  
+            // 添加正在执行命令的消息
+            const executingMessage: ChatMessage = {
+              id: Date.now().toString() + '_executing',
+              type: 'ai',
+              content: '',
+              timestamp: new Date(),
+              isTyping: false,
+              isExecuting: true,
+              commandData: jsonData,
+            };
+  
+            messages.value.push(executingMessage);
+            await nextTick();
+            scrollToBottom();
+            let res = await getExecuteCommandApi(jsonData.commands.command);
+            console.log('命令执行结果:', res);
+            // 移除执行中的消息
+            const executingIndex = messages.value.findIndex(msg => msg.id === executingMessage.id);
+            if (executingIndex !== -1) {
+              messages.value.splice(executingIndex, 1);
+            }
+            const Command = `${jsonData.commands.type}命令执行结果:
+    - 命令: ${jsonData.commands.command}
+    - 描述: ${jsonData.commands.description}
+    - 风险级别: ${jsonData.riskLevel}
+    - 执行结果: ${res.result.output || '无输出'}
+    - 执行状态: ${res.result.success ? '成功' : '失败'}
+    - 执行时间: ${res.result.timestamp}`
+            // 添加执行结果消息
+            const resultMessage: ChatMessage = {
+              id: Date.now().toString() + '_result',
+              type: 'ai',
+              content: res.result.output || Command,
+              timestamp: new Date(),
+              isTyping: false,
+              isServerCommand: true,
+              commandData: jsonData,
+            };
+            messages.value.push(resultMessage);
+            await nextTick();
+            scrollToBottom();
+  
+            if (res.result.output) {
+              // 生成AI对命令结果的总结
+              await generateCommandSummary(jsonData, res.result.output);
+            }
           }
         }
       }
