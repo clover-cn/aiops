@@ -359,11 +359,18 @@ const simulateAiResponse = async () => {
           if (executingIndex !== -1) {
             messages.value.splice(executingIndex, 1);
           }
+          const Command = `${jsonData.commands.type}命令执行结果:
+  - 命令: ${jsonData.commands.command}
+  - 描述: ${jsonData.commands.description}
+  - 风险级别: ${jsonData.riskLevel}
+  - 执行结果: ${res.result.output || '无输出'}
+  - 执行状态: ${res.result.success ? '成功' : '失败'}
+  - 执行时间: ${res.result.timestamp}`
           // 添加执行结果消息
           const resultMessage: ChatMessage = {
             id: Date.now().toString() + '_result',
             type: 'ai',
-            content: res.result.output,
+            content: res.result.output || Command,
             timestamp: new Date(),
             isTyping: false,
             isServerCommand: true,
