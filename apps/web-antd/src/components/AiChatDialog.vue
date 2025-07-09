@@ -337,7 +337,7 @@ const simulateAiResponse = async () => {
             const executingMessage: ChatMessage = {
               id: Date.now().toString() + '_executing',
               type: 'ai',
-              content: '',
+              content: '命令执行中...',
               timestamp: new Date(),
               isTyping: false,
               isExecuting: true,
@@ -393,6 +393,14 @@ const simulateAiResponse = async () => {
     const typingIndex = messages.value.findIndex((msg) => msg.isTyping);
     if (typingIndex !== -1) {
       messages.value.splice(typingIndex, 1);
+    }
+
+    // 如果执行失败，就将执行中的ui移除，这个过程会移除上下文。移除content: '命令执行中...' 并且要type为 'ai' 的消息
+    const executingIndex = messages.value.findIndex(
+      (msg) => msg.isExecuting && msg.type === 'ai',
+    );
+    if (executingIndex !== -1) {
+      messages.value.splice(executingIndex, 1);
     }
 
     // 添加错误消息
