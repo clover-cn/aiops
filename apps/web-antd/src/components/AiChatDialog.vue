@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref, computed, nextTick, watch } from 'vue';
-import { Modal, Input, Button, Avatar, Spin, message } from 'ant-design-vue';
+import { Modal, Input, Button, Avatar, Spin, message, InputNumber, Tooltip, Divider } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import {
   sendChatMessageStream,
@@ -46,6 +46,40 @@ const messages = ref<ChatMessage[]>([
 ]);
 const loading = ref(false);
 const messagesContainer = ref<HTMLElement>();
+
+// 上下文设置
+const contextLimit = ref(10); // 默认保留10条上下文
+const showSettings = ref(false); // 控制设置面板显示
+
+// 构建带上下文限制的对话历史
+const buildChatHistory = (systemPrompt: string): ApiChatMessage[] => {
+  // 过滤掉正在输入和执行中的消息
+  const validMessages = messages.value.filter((msg) => !msg.isTyping && !msg.isExecuting);
+
+  // 转换为API格式
+  const apiMessages: ApiChatMessage[] = validMessages.map((msg) => ({
+    role: msg.type === 'user' ? ('user' as const) : ('assistant' as const),
+    content: msg.content,
+  }));
+
+  // 如果消息数量超过限制，进行截断（但保留system消息）
+  let finalMessages: ApiChatMessage[];
+  if (apiMessages.length > contextLimit.value) {
+    // 保留最新的contextLimit.value条消息
+    finalMessages = apiMessages.slice(-contextLimit.value);
+  } else {
+    finalMessages = apiMessages;
+  }
+
+  // 始终在开头添加system消息
+  return [
+    {
+      role: 'system' as const,
+      content: systemPrompt,
+    },
+    ...finalMessages,
+  ];
+};
 
 const handleSendMessage = async () => {
   if (!inputMessage.value.trim()) {
@@ -229,21 +263,7 @@ const simulateAiResponse = async () => {
     3. 不确定时主动询问，避免误判
     4. 运维命令返回JSON时不要添加任何解释文字`;
     // 构建对话历史（包含刚刚添加的用户消息）
-    const chatHistory: ApiChatMessage[] = [
-      // 首先添加系统消息
-      {
-        role: 'system' as const,
-        content: systemPrompt,
-      },
-      // 然后添加用户和助手的对话历史
-      ...messages.value
-        .filter((msg) => !msg.isTyping)
-        .map((msg) => ({
-          role:
-            msg.type === 'user' ? ('user' as const) : ('assistant' as const),
-          content: msg.content,
-        })),
-    ];
+    const chatHistory = buildChatHistory(systemPrompt);
     // 使用流式API获取回复
     const streamGenerator = sendChatMessageStream(chatHistory, {
       temperature: 0.7,
@@ -465,7 +485,6 @@ watch(
 <template>
   <Modal
     v-model:open="dialogVisible"
-    title="🤖 AI智能助手"
     width="600px"
     :footer="null"
     :mask-closable="false"
@@ -473,7 +492,59 @@ watch(
     class="ai-chat-modal"
     @cancel="handleClose"
   >
+    <template #title>
+      <div class="modal-title-container">
+        <div class="title-left">
+          <Tooltip title="设置">
+            <Button
+              type="text"
+              size="small"
+              @click="showSettings = !showSettings"
+              class="settings-btn"
+            >
+              <IconifyIcon icon="lucide:settings" class="text-base" />
+            </Button>
+          </Tooltip>
+        </div>
+        <div class="title-center">
+          <span>🤖 AI智能助手</span>
+        </div>
+        <div class="title-right"></div>
+      </div>
+    </template>
     <div class="ai-chat-dialog">
+      <!-- 设置面板 -->
+      <div v-if="showSettings" class="settings-panel">
+        <div class="settings-header">
+          <IconifyIcon icon="lucide:settings" class="mr-2" />
+          <span>对话设置</span>
+        </div>
+        <div class="settings-content">
+          <div class="setting-item">
+            <label class="setting-label">
+              <Tooltip title="设置保留的上下文消息数量，超出部分将被自动截断。System消息始终保留。">
+                <IconifyIcon icon="lucide:help-circle" class="help-icon" />
+              </Tooltip>
+              上下文数量限制:
+            </label>
+            <InputNumber
+              v-model:value="contextLimit"
+              :min="1"
+              :max="50"
+              :step="1"
+              size="small"
+              class="context-input"
+            />
+            <span class="setting-desc">条消息</span>
+          </div>
+          <div class="setting-note">
+            <IconifyIcon icon="lucide:info" class="mr-1" />
+            当前对话包含 {{ messages.filter(m => !m.isTyping && !m.isExecuting).length }} 条消息
+          </div>
+        </div>
+        <Divider class="settings-divider" />
+      </div>
+
       <!-- 消息列表 -->
       <div ref="messagesContainer" class="messages-container">
         <div
@@ -572,11 +643,174 @@ watch(
   </Modal>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
 .ai-chat-dialog {
   height: 500px;
   display: flex;
   flex-direction: column;
+}
+
+/* 模态框标题样式 */
+.modal-title-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  position: relative;
+}
+
+.title-left {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 40px; /* 固定宽度 */
+}
+
+.title-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 600;
+  color: white;
+}
+
+.title-right {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 40px; /* 与左侧保持平衡 */
+}
+
+.settings-btn {
+  color: white !important;
+  border: none !important;
+  background: transparent !important;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.settings-btn {
+  &:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+}
+
+/* 设置面板样式 */
+.settings-panel {
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  animation: slide-down 0.3s ease-out;
+}
+
+.dark .settings-panel {
+  background: #1f1f1f;
+  border-color: #303030;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #e8e8e8;
+  border-radius: 6px 6px 0 0;
+  font-weight: 500;
+  color: #262626;
+}
+
+.dark .settings-header {
+  background: #262626;
+  border-color: #303030;
+  color: #e6edf3;
+}
+
+.settings-content {
+  padding: 16px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #595959;
+  min-width: 140px;
+}
+
+.dark .setting-label {
+  color: #8b949e;
+}
+
+.help-icon {
+  font-size: 14px;
+  color: #8c8c8c;
+  margin-right: 6px;
+  cursor: help;
+}
+
+.dark .help-icon {
+  color: #6e7681;
+}
+
+.context-input {
+  width: 80px;
+}
+
+.setting-desc {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+.dark .setting-desc {
+  color: #6e7681;
+}
+
+.setting-note {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #8c8c8c;
+  background: #f8f8f8;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border-left: 3px solid #1890ff;
+}
+
+.dark .setting-note {
+  color: #6e7681;
+  background: #161b22;
+  border-color: #1890ff;
+}
+
+.settings-divider {
+  margin: 0 !important;
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .messages-container {
@@ -584,6 +818,12 @@ watch(
   overflow-y: auto;
   padding: 16px 0;
   max-height: 400px;
+  transition: max-height 0.3s ease;
+}
+
+/* 当设置面板显示时调整消息容器高度 */
+.ai-chat-dialog:has(.settings-panel) .messages-container {
+  max-height: 280px;
 }
 
 .message-item {
@@ -727,15 +967,27 @@ watch(
   background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
+  position: relative;
 }
 
 :deep(.ai-chat-modal .ant-modal-title) {
-  color: white;
-  font-weight: 600;
+  width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 :deep(.ai-chat-modal .ant-modal-close) {
   color: white;
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
 }
 
 :deep(.ai-chat-modal .ant-modal-close:hover) {

@@ -42,7 +42,7 @@ const handleDialogClose = () => {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
 /* AI图标脉冲动画 */
 @keyframes pulse {
   0% {
