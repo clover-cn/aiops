@@ -17,6 +17,7 @@ import {
   type ChatMessage as ApiChatMessage,
 } from '#/api/index';
 import { getExecuteCommandApi } from '#/api/index';
+import MarkdownRenderer from './MarkdownRenderer.vue';
 interface ChatMessage {
   id: string;
   type: 'user' | 'ai';
@@ -58,7 +59,7 @@ const loading = ref(false);
 const messagesContainer = ref<HTMLElement>();
 
 // 上下文设置
-const contextLimit = ref(10); // 默认保留10条上下文
+const contextLimit = ref(6); // 默认保留10条上下文
 const showSettings = ref(false); // 控制设置面板显示
 
 // 构建带上下文限制的对话历史
@@ -542,7 +543,7 @@ watch(
           <div class="setting-item">
             <label class="setting-label">
               <Tooltip
-                title="设置保留的上下文消息数量，超出部分将被自动截断。System消息始终保留。"
+                title="设置保留的上下文消息数量，超出部分将被自动截断(截断后Ai将没有相关记忆)"
               >
                 <IconifyIcon icon="lucide:help-circle" class="help-icon" />
               </Tooltip>
@@ -626,8 +627,18 @@ watch(
             </div>
             <!-- 普通消息UI -->
             <div v-else class="message-text" :class="{ typing: msg.isTyping }">
-              {{ msg.content }}
-              <span v-if="msg.isTyping" class="typing-cursor">|</span>
+              <!-- AI消息使用Markdown渲染（支持流式渲染） -->
+              <MarkdownRenderer
+                v-if="msg.type === 'ai'"
+                :content="msg.content"
+                :enable-highlight="true"
+                :stream-mode="true"
+                :is-streaming="msg.isTyping"
+              />
+              <!-- 用户消息使用普通文本 -->
+              <template v-else>
+                {{ msg.content }}
+              </template>
             </div>
             <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
           </div>
@@ -866,6 +877,55 @@ watch(
   word-wrap: break-word;
   line-height: 1.5;
   color: hsl(var(--foreground));
+
+  /* Markdown渲染器样式调整 */
+  :deep(.markdown-renderer) {
+    .markdown-content {
+      margin: 0;
+
+      /* 调整代码块在消息中的样式 */
+      pre {
+        margin: 0.5em 0;
+        background: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+
+      /* 调整段落间距 */
+      p {
+        margin: 0.5em 0;
+
+        &:first-child {
+          margin-top: 0;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      /* 调整标题间距 */
+      h1, h2, h3, h4, h5, h6 {
+        margin: 0.8em 0 0.4em 0;
+
+        &:first-child {
+          margin-top: 0;
+        }
+      }
+
+      /* 调整列表间距 */
+      ul, ol {
+        margin: 0.5em 0;
+
+        &:first-child {
+          margin-top: 0;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+    }
+  }
 }
 
 .message-item.user .message-text {
@@ -1170,6 +1230,16 @@ watch(
   .message-text {
     background: #3d3d5c;
     color: hsl(var(--foreground));
+
+    /* 深色模式下的Markdown渲染器样式调整 */
+    :deep(.markdown-renderer) {
+      .markdown-content {
+        pre {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+      }
+    }
   }
   .message-item {
     .user {
