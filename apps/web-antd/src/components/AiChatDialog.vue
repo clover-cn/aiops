@@ -1,6 +1,16 @@
 <script lang="ts" setup>
 import { ref, computed, nextTick, watch } from 'vue';
-import { Modal, Input, Button, Avatar, Spin, message, InputNumber, Tooltip, Divider } from 'ant-design-vue';
+import {
+  Modal,
+  Input,
+  Button,
+  Avatar,
+  Spin,
+  message,
+  InputNumber,
+  Tooltip,
+  Divider,
+} from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import {
   sendChatMessageStream,
@@ -54,7 +64,9 @@ const showSettings = ref(false); // 控制设置面板显示
 // 构建带上下文限制的对话历史
 const buildChatHistory = (systemPrompt: string): ApiChatMessage[] => {
   // 过滤掉正在输入和执行中的消息
-  const validMessages = messages.value.filter((msg) => !msg.isTyping && !msg.isExecuting);
+  const validMessages = messages.value.filter(
+    (msg) => !msg.isTyping && !msg.isExecuting,
+  );
 
   // 转换为API格式
   const apiMessages: ApiChatMessage[] = validMessages.map((msg) => ({
@@ -113,7 +125,10 @@ const handleSendMessage = async () => {
 };
 
 // 生成AI对命令结果的总结
-const generateCommandSummary = async (commandData: any, commandOutput: string) => {
+const generateCommandSummary = async (
+  commandData: any,
+  commandOutput: string,
+) => {
   try {
     // 构建总结提示词
     const summaryPrompt = `请对以下命令执行结果进行分析和总结，用简洁明了的中文回复用户：
@@ -137,7 +152,8 @@ const generateCommandSummary = async (commandData: any, commandOutput: string) =
     const summaryHistory: ApiChatMessage[] = [
       {
         role: 'system' as const,
-        content: '你是一个专业的运维助手，擅长分析命令执行结果并给出简洁明了的总结。请用中文回复，语气要友好专业。',
+        content:
+          '你是一个专业的运维助手，擅长分析命令执行结果并给出简洁明了的总结。请用中文回复，语气要友好专业。',
       },
       {
         role: 'user' as const,
@@ -209,7 +225,8 @@ const generateCommandSummary = async (commandData: any, commandOutput: string) =
     const errorSummaryMessage: ChatMessage = {
       id: Date.now().toString() + '_summary_error',
       type: 'ai',
-      content: '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。',
+      content:
+        '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。',
       timestamp: new Date(),
     };
     messages.value.push(errorSummaryMessage);
@@ -352,7 +369,7 @@ const simulateAiResponse = async () => {
             if (jsonMessageIndex !== -1) {
               messages.value.splice(jsonMessageIndex, 1);
             }
-  
+
             // 添加正在执行命令的消息
             const executingMessage: ChatMessage = {
               id: Date.now().toString() + '_executing',
@@ -363,14 +380,16 @@ const simulateAiResponse = async () => {
               isExecuting: true,
               commandData: jsonData,
             };
-  
+
             messages.value.push(executingMessage);
             await nextTick();
             scrollToBottom();
             let res = await getExecuteCommandApi(jsonData.commands.command);
             console.log('命令执行结果:', res);
             // 移除执行中的消息
-            const executingIndex = messages.value.findIndex(msg => msg.id === executingMessage.id);
+            const executingIndex = messages.value.findIndex(
+              (msg) => msg.id === executingMessage.id,
+            );
             if (executingIndex !== -1) {
               messages.value.splice(executingIndex, 1);
             }
@@ -380,7 +399,7 @@ const simulateAiResponse = async () => {
     - 风险级别: ${jsonData.riskLevel}
     - 执行结果: ${res.result.output || '无输出'}
     - 执行状态: ${res.result.success ? '成功' : '失败'}
-    - 执行时间: ${res.result.timestamp}`
+    - 执行时间: ${res.result.timestamp}`;
             // 添加执行结果消息
             const resultMessage: ChatMessage = {
               id: Date.now().toString() + '_result',
@@ -394,7 +413,7 @@ const simulateAiResponse = async () => {
             messages.value.push(resultMessage);
             await nextTick();
             scrollToBottom();
-  
+
             if (res.result.output) {
               // 生成AI对命令结果的总结
               await generateCommandSummary(jsonData, res.result.output);
@@ -522,7 +541,9 @@ watch(
         <div class="settings-content">
           <div class="setting-item">
             <label class="setting-label">
-              <Tooltip title="设置保留的上下文消息数量，超出部分将被自动截断。System消息始终保留。">
+              <Tooltip
+                title="设置保留的上下文消息数量，超出部分将被自动截断。System消息始终保留。"
+              >
                 <IconifyIcon icon="lucide:help-circle" class="help-icon" />
               </Tooltip>
               上下文数量限制:
@@ -539,7 +560,9 @@ watch(
           </div>
           <div class="setting-note">
             <IconifyIcon icon="lucide:info" class="mr-1" />
-            当前对话包含 {{ messages.filter(m => !m.isTyping && !m.isExecuting).length }} 条消息
+            当前对话包含
+            {{ messages.filter((m) => !m.isTyping && !m.isExecuting).length }}
+            条消息
           </div>
         </div>
         <Divider class="settings-divider" />
@@ -576,16 +599,25 @@ watch(
                 正在执行命令...
               </div>
               <div class="command-info">
-                <div class="command-title">命令类型: {{ msg.commandData?.commands?.type }}</div>
-                <div class="command-desc">{{ msg.commandData?.commands?.description }}</div>
-                <div class="command-text">{{ msg.commandData?.commands?.command }}</div>
+                <div class="command-title">
+                  命令类型: {{ msg.commandData?.commands?.type }}
+                </div>
+                <div class="command-desc">
+                  {{ msg.commandData?.commands?.description }}
+                </div>
+                <div class="command-text">
+                  {{ msg.commandData?.commands?.command }}
+                </div>
                 <div class="risk-level" :class="msg.commandData?.riskLevel">
                   风险级别: {{ msg.commandData?.riskLevel?.toUpperCase() }}
                 </div>
               </div>
             </div>
             <!-- 服务器命令结果UI -->
-            <div v-else-if="msg.isServerCommand" class="message-text server-command">
+            <div
+              v-else-if="msg.isServerCommand"
+              class="message-text server-command"
+            >
               <div class="server-command-header">
                 <IconifyIcon icon="lucide:check-circle" class="mr-2" />
                 命令执行完成
@@ -675,7 +707,7 @@ watch(
   left: 50%;
   transform: translateX(-50%);
   font-weight: 600;
-  color: white;
+  color: hsl(var(--foreground));
 }
 
 .title-right {
@@ -686,7 +718,7 @@ watch(
 }
 
 .settings-btn {
-  color: white !important;
+  color: #595959 !important;
   border: none !important;
   background: transparent !important;
   width: 28px;
@@ -699,7 +731,7 @@ watch(
 
 .settings-btn {
   &:hover {
-    background: rgba(255, 255, 255, 0.1) !important;
+    background: rgba(0, 0, 0, 0.1) !important;
   }
 }
 
@@ -712,11 +744,6 @@ watch(
   animation: slide-down 0.3s ease-out;
 }
 
-.dark .settings-panel {
-  background: #1f1f1f;
-  border-color: #303030;
-}
-
 .settings-header {
   display: flex;
   align-items: center;
@@ -726,12 +753,6 @@ watch(
   border-radius: 6px 6px 0 0;
   font-weight: 500;
   color: #262626;
-}
-
-.dark .settings-header {
-  background: #262626;
-  border-color: #303030;
-  color: #e6edf3;
 }
 
 .settings-content {
@@ -753,19 +774,11 @@ watch(
   min-width: 140px;
 }
 
-.dark .setting-label {
-  color: #8b949e;
-}
-
 .help-icon {
   font-size: 14px;
   color: #8c8c8c;
   margin-right: 6px;
   cursor: help;
-}
-
-.dark .help-icon {
-  color: #6e7681;
 }
 
 .context-input {
@@ -777,10 +790,6 @@ watch(
   color: #8c8c8c;
 }
 
-.dark .setting-desc {
-  color: #6e7681;
-}
-
 .setting-note {
   display: flex;
   align-items: center;
@@ -790,12 +799,6 @@ watch(
   padding: 8px 12px;
   border-radius: 4px;
   border-left: 3px solid #1890ff;
-}
-
-.dark .setting-note {
-  color: #6e7681;
-  background: #161b22;
-  border-color: #1890ff;
 }
 
 .settings-divider {
@@ -876,21 +879,6 @@ watch(
   margin-top: 4px;
 }
 
-/* 深色模式适配 */
-.dark .message-text {
-  background: #3d3d5c;
-  color: hsl(var(--foreground));
-}
-
-.dark .message-item.user .message-text {
-  background: #1890ff;
-  color: white;
-}
-
-.dark .message-time {
-  color: hsl(var(--muted-foreground));
-}
-
 /* 打字机效果 */
 .typing-cursor {
   animation: blink 1s infinite;
@@ -921,11 +909,6 @@ watch(
   border-top: 1px solid #f0f0f0;
 }
 
-/* 深色模式下的输入区域 */
-.dark .input-area {
-  border-top: 1px solid hsl(var(--border));
-}
-
 .input-area .ant-input {
   flex: 1;
 }
@@ -947,19 +930,6 @@ watch(
 
 .messages-container::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
-}
-
-/* 深色模式下的滚动条 */
-.dark .messages-container::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-}
-
-.dark .messages-container::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-}
-
-.dark .messages-container::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
 }
 
 /* 模态框样式优化 */
@@ -998,17 +968,6 @@ watch(
   border-radius: 8px;
   overflow: hidden;
   background: hsl(var(--background));
-}
-
-/* 深色模式下的模态框 */
-.dark :deep(.ai-chat-modal .ant-modal-content) {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-}
-
-.dark :deep(.ai-chat-modal .ant-modal-body) {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
 }
 
 /* 消息动画 */
@@ -1066,11 +1025,6 @@ watch(
   animation: pulse-orange 2s infinite;
 }
 
-.dark .executing-command {
-  background: #2b1d0e;
-  border-color: #d4b106;
-}
-
 .executing-header {
   display: flex;
   align-items: center;
@@ -1080,19 +1034,11 @@ watch(
   font-size: 14px;
 }
 
-.dark .executing-header {
-  color: #ffa940;
-}
-
 .command-info {
   background: #fafafa;
   border-radius: 4px;
   padding: 8px;
   margin-top: 8px;
-}
-
-.dark .command-info {
-  background: #1f1f1f;
 }
 
 .command-title {
@@ -1102,18 +1048,10 @@ watch(
   font-size: 13px;
 }
 
-.dark .command-title {
-  color: #e6edf3;
-}
-
 .command-desc {
   color: #595959;
   margin-bottom: 8px;
   font-size: 12px;
-}
-
-.dark .command-desc {
-  color: #8b949e;
 }
 
 .command-text {
@@ -1125,12 +1063,6 @@ watch(
   font-size: 12px;
   color: #262626;
   margin-bottom: 8px;
-}
-
-.dark .command-text {
-  background: #161b22;
-  border-color: #30363d;
-  color: #e6edf3;
 }
 
 .risk-level {
@@ -1159,24 +1091,6 @@ watch(
   border: 1px solid #ffccc7;
 }
 
-.dark .risk-level.low {
-  background: #162312;
-  color: #73d13d;
-  border-color: #389e0d;
-}
-
-.dark .risk-level.medium {
-  background: #2b1d0e;
-  color: #ffa940;
-  border-color: #d4b106;
-}
-
-.dark .risk-level.high {
-  background: #2a1215;
-  color: #ff7875;
-  border-color: #a8071a;
-}
-
 @keyframes pulse-orange {
   0% {
     box-shadow: 0 0 0 0 rgba(250, 140, 22, 0.4);
@@ -1197,11 +1111,6 @@ watch(
   padding: 12px;
 }
 
-.dark .server-command {
-  background: #161b22;
-  border-color: #30363d;
-}
-
 .server-command-header {
   display: flex;
   align-items: center;
@@ -1209,10 +1118,6 @@ watch(
   font-weight: 500;
   margin-bottom: 8px;
   font-size: 14px;
-}
-
-.dark .server-command-header {
-  color: #3fb950;
 }
 
 .server-output {
@@ -1230,9 +1135,121 @@ watch(
   overflow-y: auto;
 }
 
-.dark .server-output {
-  background: #0d1117;
-  border-color: #30363d;
-  color: #e6edf3;
+// 浅色适配模式
+.dark {
+  /* 深色模式下的设置按钮 */
+  .settings-btn {
+    color: white !important;
+    &:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+    }
+  }
+  .settings-header {
+    background: #262626;
+    border-color: #303030;
+    color: #e6edf3;
+  }
+  .setting-label {
+    color: #8b949e;
+  }
+  .settings-panel {
+    background: #1f1f1f;
+    border-color: #303030;
+  }
+  .help-icon {
+    color: #6e7681;
+  }
+  .setting-desc {
+    color: #6e7681;
+  }
+  .setting-note {
+    color: #6e7681;
+    background: #161b22;
+    border-color: #1890ff;
+  }
+  .message-text {
+    background: #3d3d5c;
+    color: hsl(var(--foreground));
+  }
+  .message-item {
+    .user {
+      .message-text {
+        background: #1890ff;
+        color: white;
+      }
+    }
+  }
+  .message-time {
+    color: hsl(var(--muted-foreground));
+  }
+  .input-area {
+    border-top: 1px solid hsl(var(--border));
+  }
+  .messages-container::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+  .messages-container::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .messages-container::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+  .executing-command {
+    background: #2b1d0e;
+    border-color: #d4b106;
+  }
+  .executing-header {
+    color: #ffa940;
+  }
+  .command-info {
+    background: #1f1f1f;
+  }
+  .command-title {
+    color: #e6edf3;
+  }
+  .command-desc {
+    color: #8b949e;
+  }
+  .command-text {
+    background: #161b22;
+    border-color: #30363d;
+    color: #e6edf3;
+  }
+  .risk-level.low {
+    background: #162312;
+    color: #73d13d;
+    border-color: #389e0d;
+  }
+  .risk-level.medium {
+    background: #2b1d0e;
+    color: #ffa940;
+    border-color: #d4b106;
+  }
+  .risk-level.high {
+    background: #2a1215;
+    color: #ff7875;
+    border-color: #a8071a;
+  }
+  .server-command {
+    background: #161b22;
+    border-color: #30363d;
+  }
+  .server-command-header {
+    color: #3fb950;
+  }
+  .server-output {
+    background: #0d1117;
+    border-color: #30363d;
+    color: #e6edf3;
+  }
+  /* 深色模式下的模态框 */
+  &:deep(.ai-chat-modal .ant-modal-content) {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+  &:deep(.ai-chat-modal .ant-modal-body) {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
 }
 </style>
