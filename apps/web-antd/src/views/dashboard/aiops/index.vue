@@ -22,6 +22,8 @@ import ResourceUsage from './resource-usage.vue';
 import LogAnalysis from './log-analysis.vue';
 
 const { isDark } = usePreferences();
+// 统一定时器刷新时间
+const REFRESH_INTERVAL = 30000; // 30秒
 
 // 计算主题相关的样式类
 const containerClasses = computed(() => {
@@ -100,7 +102,7 @@ const overviewItems: AnalysisOverviewItem[] = [
         title="系统性能指标"
         :class="cardClasses"
       >
-        <SystemMetrics />
+        <SystemMetrics :refreshInterval="REFRESH_INTERVAL"/>
       </AnalysisChartCard>
 
       <AnalysisChartCard
@@ -124,7 +126,7 @@ const overviewItems: AnalysisOverviewItem[] = [
         title="网络流量监控"
         :class="cardClasses"
       >
-        <NetworkTraffic />
+        <NetworkTraffic :refreshInterval="REFRESH_INTERVAL"/>
       </AnalysisChartCard>
     </div>
 

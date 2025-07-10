@@ -12,6 +12,26 @@ const chartRef = ref<EchartsUIType>();
 const { renderEcharts } = useEcharts(chartRef);
 const { isDark } = usePreferences();
 
+// JavaScript 和 TypeScript环境通用
+const props = defineProps({
+  refreshInterval: {
+    type: Number, // 接收定义期望的类型
+    required: true, // 标记为必需，如果父组件没传，Vue会发出警告
+    // default: 30000 // 或者提供一个默认值
+  }
+});
+
+// 仅限 TypeScript环境
+// interface Props {
+//   refreshInterval?: number; // 可选属性，默认为30秒
+// }
+// 有默认值
+// const props = withDefaults(defineProps<Props>(), {
+//   refreshInterval: 30000
+// });
+// 没有默认值不需要withDefaults
+// const props = defineProps<Props>();
+
 let timer: NodeJS.Timeout | null = null;
 
 
@@ -186,8 +206,7 @@ const updateChart = async () => {
 
 onMounted(() => {
   updateChart();
-  // 每30秒更新一次数据
-  timer = setInterval(updateChart, 30000);
+  timer = setInterval(updateChart, props.refreshInterval);
 });
 
 onUnmounted(() => {
