@@ -15,6 +15,7 @@ import { IconifyIcon } from '@vben/icons';
 import {
   sendChatMessageStream,
   type ChatMessage as ApiChatMessage,
+  ragQueryApi,
 } from '#/api/index';
 import { getExecuteCommandApi } from '#/api/index';
 import MarkdownRenderer from './MarkdownRenderer.vue';
@@ -116,7 +117,7 @@ const handleSendMessage = async () => {
   // AI回复
   loading.value = true;
   try {
-    await simulateAiResponse();
+    await simulateAiResponse(userMessage.content);
   } catch (error) {
     message.error('AI回复失败，请重试');
   } finally {
@@ -236,90 +237,142 @@ const generateCommandSummary = async (
   }
 };
 
-const simulateAiResponse = async () => {
+// 构建基于RAG检索结果的动态Prompt
+const buildRAGPrompt = async (userInput: string): Promise<string> => {
   try {
+    // 使用RAG检索相关知识
+    const ragResult = await ragQueryApi({
+      query: userInput,
+      topK: 3,
+      threshold: 0.55,
+    });
+
     const System = import.meta.env.VITE_CHAT_SYSTEM;
-    // 系统提示词，定义AI助手的角色和行为
-    const systemPrompt = `你是一个专业的智能运维助手（AI-Ops Assistant）。
+
+    // 基础系统提示词
+    let systemPrompt = `你是一个专业的智能运维助手（AI-Ops Assistant）。
 
 ## 核心职责
-你的核心职责是理解用户的运维需求，并将其转化为精确的、可执行的系统命令。你需要处理从简单的服务状态查询到复杂的文件操作等各种任务。
+你的核心职责是深入理解用户的运维需求和对话历史，将其转化为结构化的意图（Intent）和参数（Parameters）。你绝不能自己编造或直接生成最终的系统命令。
 
-## 知识库：服务与命令映射
-这是你掌握的运维知识核心。当用户提到某个服务或操作时，你必须参考此处的定义来生成命令。
+## 工作流程
+1. **分析输入**: 结合用户的最新输入和下面的"对话历史"，识别其核心意图。
+2. **参考知识**: 在用户输入中提到的服务和操作，必须严格参考下面提供的"相关知识库摘录"来确定其标准意图和可用参数。
+3. **提取参数**: 如果用户提供了具体参数（如行数、文件名），请准确提取。如果未提供，则使用知识库中定义的默认值。
+4. **生成JSON**: 严格按照指定的JSON格式返回结果。
+5. **处理未知**: 如果无法在知识库中找到匹配项，或信息不足，请向用户澄清，不要猜测。
+6. **普通对话**: 对于非运维请求，用自然语言友好回复。
 
-- **服务名称**: "支付服务"
-  - **别名/关键词**: ["支付", "payment", "交易"]
-  - **支持的操作**:
-    - **检查状态**:
-      - **意图**: \`check_status\`
-      - **关键词**: ["状态", "情况", "运行", "怎么样", "正常吗", "挂了没"]
-      - **命令**: \`systemctl status payment.service\`
-      - **风险等级**: low
-    - **查看日志**:
-      - **意图**: \`view_logs\`
-      - **关键词**: ["日志", "log", "记录"]
-      - **命令**: \`journalctl -u payment.service -n 100\`
-      - **风险等级**: low
-    - **重启服务**:
-      - **意图**: \`restart_service\`
-      - **关键词**: ["重启", "restart"]
-      - **命令**: \`systemctl restart payment.service\`
-      - **风险等级**: medium
-      - **需要审批**: true
+## 相关知识库摘录`;
 
-- **服务名称**: "数据库服务"
-  - **别名/关键词**: ["数据库", "database", "MySQL", "DB"]
-  - **支持的操作**:
-    - **检查状态**:
-      - **意图**: \`check_status\`
-      - **关键词**: ["状态", "情况", "运行"]
-      - **命令**: \`systemctl status mysql.service\`
-      - **风险等级**: low
-    - **重启服务**:
-      - **意图**: \`restart_service\`
-      - **关键词**: ["重启", "restart"]
-      - **命令**: \`systemctl restart mysql.service\`
-      - **风险等级**: high
-      - **需要审批**: true
+    // 如果RAG检索成功且有结果，添加检索到的知识
+    if (
+      ragResult.relevantKnowledge.success &&
+      ragResult.relevantKnowledge.results.length > 0
+    ) {
+      systemPrompt += `\n基于您的输入"${userInput}"，我找到了以下相关的运维知识：\n`;
 
-- **通用操作**:
-  - **打开文件管理器**:
-    - **意图**: \`open_file_explorer\`
-    - **关键词**: ["文件管理器", "文件", "文件夹", "资源管理器"]
-    - **命令**: \`explorer.exe\` # (Windows示例, 根据系统调整)
-    - **风险等级**: low
-    - **需要审批**: false
+      ragResult.relevantKnowledge.results.forEach((metadata: any, index) => {
+        systemPrompt += `\n### 知识条目 ${index + 1} (相似度: ${(metadata.similarity * 100).toFixed(1)}%)
+- **意图标识**: ${metadata.intent}
+- **描述**: ${metadata.description}
+- **关键词**: ${metadata.keywords}
+- **命令模板**: ${metadata.commandTemplate}
+- **风险级别**: ${metadata.riskLevel}
+- **分类**: ${metadata.category}`;
 
-## 意图识别与响应逻辑
-1.  **识别核心意图**: 首先分析用户的输入，判断是“运维操作”还是“普通对话”。
-2.  **匹配服务**: 如果是“运维操作”，根据用户输入中的关键词，在“知识库”中找到最匹配的“服务名称”。例如，用户说“支付服务日志”，应匹配到“支付服务”。
-3.  **匹配操作**: 在已匹配服务的“支持的操作”列表中，根据关键词找到最匹配的操作。例如，“支付服务日志”应匹配到“查看日志”操作。
-4.  **生成JSON**: 成功匹配后，严格按照以下JSON格式返回结果。不要添加任何额外的解释或前缀。
-5.  **无法匹配**: 如果在“知识库”中找不到匹配的服务或操作，不要猜测。应回复“抱歉，我无法理解您的操作，或者该服务尚未录入我的知识库。您可以换一种方式描述，或者联系管理员添加此功能。”
-6.  **普通对话**: 对于问候、感谢或非运维的技术咨询，以自然语言友好回复。
+        if (metadata.parameters) {
+          try {
+            const params = JSON.parse(metadata.parameters);
+            if (params.length > 0) {
+              systemPrompt += `\n- **参数**: ${params.map((p: any) => `${p.name}(${p.type})`).join(', ')}`;
+            }
+          } catch (e) {
+            // 忽略参数解析错误
+          }
+        }
 
-## 响应格式
-**运维命令**：仅返回JSON格式。
-\`\`\`json
-{
-  "intent": "\${serviceName}:\${intent}",
-  "commands": {
-    "type": "系统类型(${System})",
-    "command": "具体命令",
-    "description": "命令说明（例如：重启支付服务）"
-  },
-  "requiresApproval": true/false,
-  "riskLevel": "low/medium/high",
-  "isCommand": true
-}
-\`\`\`
-**普通对话**：直接自然语言回复。
+        if (metadata.examples) {
+          try {
+            const examples = JSON.parse(metadata.examples);
+            if (examples.length > 0) {
+              systemPrompt += `\n- **示例**: ${examples.join(', ')}`;
+            }
+          } catch (e) {
+            // 忽略示例解析错误
+          }
+        }
+        systemPrompt += '\n';
+      });
+    } else {
+      console.log('RAG检索未找到相关知识，使用默认提示词');
+      
+      // 如果没有找到相关知识，提供基本指导
+      systemPrompt = `你是一个专业的智能运维助手（AI-Ops Assistant）。。
+      ## 核心职责
+      帮助用户处理系统运维操作和回答技术问题。
+      ## 意图识别规则
+      ### 运维命令（返回JSON格式）
+      当用户明确请求以下操作时：
+      - 系统操作：重启服务、关机、启动程序、停止服务
+      - 监控查询：检查状态、查看日志、性能监控、查看进程
+      - 故障排查：诊断问题、测试连接、检查配置
+      - 资源管理：文件操作、进程管理、网络配置
+      ### 普通对话（自然语言回复）
+      - 问候告别：你好、再见、谢谢、不客气、好的等
+      - 技术咨询：非直接操作的技术问题和概念解释
+      - 不确定意图：主动询问澄清用户需求
+      ## 响应格式
+      **运维命令**：仅返回JSON格式，无需任何前缀文字
+      \`\`\`json
+      {
+        "intent": "操作意图",
+        "commands": {
+          "type": "系统类型(${System})",
+          "command": "具体命令",
+          "description": "命令说明"
+        },
+        "requiresApproval": true/false,
+        "riskLevel": "low/medium/high",
+        "isCommand": true
+      }
+      \`\`\`
+      **普通对话**：直接自然语言回复
+      ## 特殊情况处理
+      - 告别语句（再见、拜拜、好的等）：友好告别回复
+      - 问候语句：正常寒暄回复
+      - 模糊意图：主动询问用户具体需求
+      - 非运维相关技术问题：提供解释和建议
+      ## 重要提醒
+      1. 只有明确的运维操作请求才返回JSON格式
+      2. 告别和问候等社交语句正常回复
+      3. 不确定时主动询问，避免误判
+      4. 运维命令返回JSON时不要添加任何解释文字
+      `;
+    }
+    return systemPrompt;
+  } catch (error) {
+    console.error('RAG检索失败，使用基础提示词:', error);
 
-## 重要提醒
-- 你的所有运维知识都来源于“知识库”，绝不杜撰命令。
-- 匹配过程要严格，不确定时必须向用户澄清。
-- \`intent\` 字段的格式应为 \`服务名称:意图\`，例如 \`支付服务:check_status\`。`;
+    // 如果RAG检索失败，返回基础的系统提示词
+    // const System = import.meta.env.VITE_CHAT_SYSTEM;
+    return `你是一个专业的智能运维助手（AI-Ops Assistant）。
+
+## 核心职责
+你的核心职责是理解用户的运维需求，但由于知识库暂时不可用，我只能提供基本的对话支持。
+
+## 当前状态
+知识库检索服务暂时不可用，我无法执行具体的运维操作。请稍后重试，或联系管理员检查RAG系统状态。
+
+## 响应方式
+请用自然语言友好地回复用户，说明当前系统状态，并建议用户稍后重试。`;
+  }
+};
+
+const simulateAiResponse = async (userInput: string) => {
+  try {
+    // 使用RAG构建动态系统提示词
+    const systemPrompt = await buildRAGPrompt(userInput);
     // 构建对话历史（包含刚刚添加的用户消息）
     const chatHistory = buildChatHistory(systemPrompt);
     // 使用流式API获取回复
@@ -746,7 +799,8 @@ watch(
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  width: 40px; /* 固定宽度 */
+  width: 40px;
+  /* 固定宽度 */
 }
 
 .title-center {
@@ -765,7 +819,8 @@ watch(
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  width: 40px; /* 与左侧保持平衡 */
+  width: 40px;
+  /* 与左侧保持平衡 */
 }
 
 .settings-btn {
@@ -861,6 +916,7 @@ watch(
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -997,6 +1053,7 @@ watch(
   50% {
     opacity: 1;
   }
+
   51%,
   100% {
     opacity: 0;
@@ -1083,6 +1140,7 @@ watch(
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1201,9 +1259,11 @@ watch(
   0% {
     box-shadow: 0 0 0 0 rgba(250, 140, 22, 0.4);
   }
+
   70% {
     box-shadow: 0 0 0 10px rgba(250, 140, 22, 0);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(250, 140, 22, 0);
   }
@@ -1246,33 +1306,41 @@ watch(
   /* 深色模式下的设置按钮 */
   .settings-btn {
     color: white !important;
+
     &:hover {
       background: rgba(255, 255, 255, 0.1) !important;
     }
   }
+
   .settings-header {
     background: #262626;
     border-color: #303030;
     color: #e6edf3;
   }
+
   .setting-label {
     color: #8b949e;
   }
+
   .settings-panel {
     background: #1f1f1f;
     border-color: #303030;
   }
+
   .help-icon {
     color: #6e7681;
   }
+
   .setting-desc {
     color: #6e7681;
   }
+
   .setting-note {
     color: #6e7681;
     background: #161b22;
     border-color: #1890ff;
   }
+
   .message-text {
     background: #3d3d5c;
     color: hsl(var(--foreground));
@@ -1287,6 +1355,7 @@ watch(
       }
     }
   }
+
   .message-item {
     .user {
       .message-text {
@@ -1295,74 +1364,93 @@ watch(
       }
     }
   }
+
   .message-time {
     color: hsl(var(--muted-foreground));
   }
+
   .input-area {
     border-top: 1px solid hsl(var(--border));
   }
+
   .messages-container::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
   }
+
   .messages-container::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
   }
+
   .messages-container::-webkit-scrollbar-track {
     background: hsl(var(--muted));
   }
+
   .executing-command {
     background: #2b1d0e;
     border-color: #d4b106;
   }
+
   .executing-header {
     color: #ffa940;
   }
+
   .command-info {
     background: #1f1f1f;
   }
+
   .command-title {
     color: #e6edf3;
   }
+
   .command-desc {
     color: #8b949e;
   }
+
   .command-text {
     background: #161b22;
     border-color: #30363d;
     color: #e6edf3;
   }
+
   .risk-level.low {
     background: #162312;
     color: #73d13d;
     border-color: #389e0d;
   }
+
   .risk-level.medium {
     background: #2b1d0e;
     color: #ffa940;
     border-color: #d4b106;
   }
+
   .risk-level.high {
     background: #2a1215;
     color: #ff7875;
     border-color: #a8071a;
   }
+
   .server-command {
     background: #161b22;
     border-color: #30363d;
   }
+
   .server-command-header {
     color: #3fb950;
   }
+
   .server-output {
     background: #0d1117;
     border-color: #30363d;
     color: #e6edf3;
   }
+
   /* 深色模式下的模态框 */
   &:deep(.ai-chat-modal .ant-modal-content) {
     background: hsl(var(--background));
     color: hsl(var(--foreground));
   }
+
   &:deep(.ai-chat-modal .ant-modal-body) {
     background: hsl(var(--background));
     color: hsl(var(--foreground));

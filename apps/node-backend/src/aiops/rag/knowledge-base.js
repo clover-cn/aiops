@@ -215,20 +215,20 @@ class KnowledgeBase {
         category: 'monitoring',
         examples: ['检查支付服务状态', '看看用户服务是否正常', '支付服务挂了没']
       },
-      // {
-      //   intent: 'server:restart_service',
-      //   description: '重启服务器上的指定服务',
-      //   keywords: ['重启服务', '重启', '重新启动', 'restart'],
-      //   commandTemplate: 'ssh ${user}@${server_ip} "systemctl restart ${service_name}"',
-      //   parameters: [
-      //     { name: 'user', type: 'string', default: 'root' },
-      //     { name: 'server_ip', type: 'string', required: true },
-      //     { name: 'service_name', type: 'string', required: true }
-      //   ],
-      //   riskLevel: 'high',
-      //   category: 'operation',
-      //   examples: ['重启支付服务', '重新启动用户服务', '重启nginx']
-      // },
+      {
+        intent: 'server:restart_service',
+        description: '重启服务器上的指定服务',
+        keywords: ['重启服务', '重启', '重新启动', 'restart'],
+        commandTemplate: 'ssh ${user}@${server_ip} "systemctl restart ${service_name}"',
+        parameters: [
+          { name: 'user', type: 'string', default: 'root' },
+          { name: 'server_ip', type: 'string', required: true },
+          { name: 'service_name', type: 'string', required: true }
+        ],
+        riskLevel: 'high',
+        category: 'operation',
+        examples: ['重启支付服务', '重新启动用户服务', '重启nginx']
+      },
       // {
       //   intent: 'server:view_logs',
       //   description: '查看服务器上服务的日志',
