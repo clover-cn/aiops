@@ -13,6 +13,11 @@
 - ✅ CORS 跨域支持
 - ✅ 安全中间件
 - ✅ 请求日志记录
+- 🆕 **RAG智能检索系统**
+  - 基于Chroma向量数据库的语义搜索
+  - SiliconFlow嵌入API集成
+  - AI运维知识库管理
+  - 意图识别和参数提取
 
 ## 技术栈
 
@@ -23,13 +28,31 @@
 - **cors** - 跨域资源共享
 - **helmet** - 安全中间件
 - **morgan** - 请求日志
+- **chromadb** - 向量数据库
+- **axios** - HTTP客户端
 
 ## 项目结构
 
 ```
 apps/node-backend/
 ├── src/
+│   ├── aiops/           # AI运维模块
+│   │   └── rag/         # RAG系统
+│   │       ├── index.js           # RAG主入口
+│   │       ├── embedding-service.js # 嵌入服务
+│   │       ├── chroma-client.js   # Chroma客户端
+│   │       ├── knowledge-base.js  # 知识库管理
+│   │       ├── retrieval-service.js # 检索服务
+│   │       ├── config.js          # 配置文件
+│   │       ├── test.js            # 测试脚本
+│   │       └── README.md          # RAG文档
 │   ├── routes/          # 路由文件
+│   │   ├── aiops/       # AI运维路由
+│   │   │   ├── index.js     # 主路由
+│   │   │   ├── rag.js       # RAG接口
+│   │   │   ├── systemMetrics.js
+│   │   │   ├── runner.js
+│   │   │   └── networkTraffic.js
 │   │   ├── auth.js      # 认证相关路由
 │   │   ├── user.js      # 用户相关路由
 │   │   ├── menu.js      # 菜单相关路由
@@ -41,7 +64,10 @@ apps/node-backend/
 │   │   └── mock-data.js # 模拟数据
 │   └── app.js           # 应用入口文件
 ├── uploads/             # 文件上传目录
+├── start-rag.js         # RAG启动脚本
+├── docker-compose.yml   # Docker配置
 ├── .env                 # 环境配置
+├── .env.example         # 环境配置示例
 ├── package.json         # 项目配置
 └── README.md           # 项目文档
 ```
@@ -74,7 +100,17 @@ REFRESH_TOKEN_EXPIRES_IN=30d
 CORS_ORIGIN=http://localhost:5173
 ```
 
-### 3. 启动服务
+### 3. 启动ChromaDB（RAG系统需要）
+
+```bash
+# 使用Docker Compose启动ChromaDB
+docker-compose up -d
+
+# 或者直接使用Docker
+docker run -p 8000:8000 chromadb/chroma
+```
+
+### 4. 启动服务
 
 ```bash
 # 开发模式
@@ -82,6 +118,12 @@ npm run dev
 
 # 生产模式
 npm start
+
+# 启动RAG系统（包含依赖检查）
+npm run start:rag
+
+# 测试RAG系统
+npm run test:rag
 ```
 
 服务将在 `http://localhost:3001` 启动。
@@ -144,6 +186,50 @@ GET /api/upload/list
 Authorization: Bearer <access_token>
 ```
 
+### AI运维RAG接口
+
+#### RAG查询
+```
+POST /api/aiops/rag/query
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "query": "检查支付服务状态",
+  "topK": 3,
+  "threshold": 0.75
+}
+```
+
+#### 知识库管理
+```
+# 获取知识列表
+GET /api/aiops/rag/knowledge
+
+# 添加知识
+POST /api/aiops/rag/knowledge
+{
+  "intent": "server:check_status",
+  "description": "检查服务器上服务的运行状态",
+  "keywords": ["检查状态", "服务状态"],
+  "commandTemplate": "ssh ${user}@${server_ip} \"systemctl status ${service_name}\"",
+  "parameters": [...],
+  "riskLevel": "low",
+  "category": "monitoring"
+}
+
+# 更新知识
+PUT /api/aiops/rag/knowledge/{id}
+
+# 删除知识
+DELETE /api/aiops/rag/knowledge/{id}
+```
+
+#### 系统状态
+```
+GET /api/aiops/rag/status
+```
+
 ## 响应格式
 
 所有接口都遵循统一的响应格式：
@@ -197,6 +283,28 @@ Authorization: Bearer <access_token>
 - 配置适当的 CORS 策略
 - 定期更新依赖包
 
+## RAG系统配置
+
+RAG系统使用以下环境变量进行配置：
+
+```env
+# 嵌入服务配置
+EMBEDDING_API_URL=https://api.siliconflow.cn/v1/embeddings
+EMBEDDING_API_KEY=your_api_key_here
+EMBEDDING_MODEL=Pro/BAAI/bge-m3
+EMBEDDING_DIMENSION=1024
+
+# ChromaDB配置
+CHROMA_URL=http://localhost:8000
+CHROMA_COLLECTION=aiops_knowledge_base
+
+# 检索配置
+RAG_DEFAULT_TOP_K=3
+RAG_DEFAULT_THRESHOLD=0.75
+```
+
+详细配置请参考 `.env.example` 文件。
+
 ## 部署
 
 ### 使用 PM2
@@ -216,6 +324,20 @@ RUN npm ci --only=production
 COPY . .
 EXPOSE 3001
 CMD ["npm", "start"]
+```
+
+### RAG系统部署
+
+1. 启动ChromaDB：
+```bash
+docker-compose up -d
+```
+
+2. 配置环境变量（复制.env.example到.env并修改）
+
+3. 启动服务：
+```bash
+npm run start:rag
 ```
 
 ## 许可证
