@@ -113,7 +113,7 @@ export async function getNetworkTrafficApi() {
  */
 export async function getExecuteCommandApi(command: string) {
   // return requestClient.get('/aiops/runner', { params: { data: req } });
-  return requestClient.post('/aiops/runner', { command });
+  return requestClient.post('/aiops/runner', { command }, { timeout: 30000 });
 }
 
 // RAG相关API函数
@@ -148,28 +148,41 @@ export async function getKnowledgeListApi(params?: {
   category?: string;
   riskLevel?: string;
 }) {
-  return requestClient.get<KnowledgeListResponse>('/aiops/rag/knowledge', { params });
+  return requestClient.get<KnowledgeListResponse>('/aiops/rag/knowledge', {
+    params,
+  });
 }
 
 /**
  * 添加知识条目
  */
 export async function addKnowledgeApi(data: Omit<KnowledgeItem, 'id'>) {
-  return requestClient.post<{ success: boolean; id: string }>('/aiops/rag/knowledge', data);
+  return requestClient.post<{ success: boolean; id: string }>(
+    '/aiops/rag/knowledge',
+    data,
+  );
 }
 
 /**
  * 更新知识条目
  */
-export async function updateKnowledgeApi(id: string, data: Partial<Omit<KnowledgeItem, 'id'>>) {
-  return requestClient.put<{ success: boolean }>(`/aiops/rag/knowledge/${id}`, data);
+export async function updateKnowledgeApi(
+  id: string,
+  data: Partial<Omit<KnowledgeItem, 'id'>>,
+) {
+  return requestClient.put<{ success: boolean }>(
+    `/aiops/rag/knowledge/${id}`,
+    data,
+  );
 }
 
 /**
  * 删除知识条目
  */
 export async function deleteKnowledgeApi(id: string) {
-  return requestClient.delete<{ success: boolean }>(`/aiops/rag/knowledge/${id}`);
+  return requestClient.delete<{ success: boolean }>(
+    `/aiops/rag/knowledge/${id}`,
+  );
 }
 
 /**

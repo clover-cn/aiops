@@ -304,9 +304,33 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
         }
         systemPrompt += '\n';
       });
+
+      // 添加统一的响应格式说明
+      systemPrompt += `\n## 响应格式
+      **运维命令**：仅返回JSON格式，无需任何前缀文字
+      \`\`\`json
+      {
+        "intent": "操作意图",
+        "commands": {
+          "type": "系统类型(${System})",
+          "command": "具体命令",
+          "description": "命令说明"
+        },
+        "requiresApproval": true/false,
+        "riskLevel": "low/medium/high",
+        "isCommand": true
+      }
+      \`\`\`
+      **普通对话**：直接自然语言回复
+
+      ## 重要提醒
+      1. 只有明确的运维操作请求才返回JSON格式
+      2. 告别和问候等社交语句正常回复
+      3. 不确定时主动询问，避免误判
+      4. 运维命令返回JSON时不要添加任何解释文字`;
     } else {
       console.log('RAG检索未找到相关知识，使用默认提示词');
-      
+
       // 如果没有找到相关知识，提供基本指导
       systemPrompt = `你是一个专业的智能运维助手（AI-Ops Assistant）。。
       ## 核心职责
