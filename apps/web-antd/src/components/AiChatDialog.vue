@@ -273,6 +273,8 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
       systemPrompt += `\n基于您的输入"${userInput}"，我找到了以下相关的运维知识：\n`;
 
       ragResult.relevantKnowledge.results.forEach((metadata: any, index) => {
+        console.log(`知识条目 ${index + 1} 知识条目名称: ${metadata.description} 相似度: ${metadata.similarity}`);
+
         systemPrompt += `\n### 知识条目 ${index + 1} (相似度: ${(metadata.similarity * 100).toFixed(1)}%)
 - **意图标识**: ${metadata.intent}
 - **描述**: ${metadata.description}
@@ -316,7 +318,7 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
           "command": "具体命令",
           "description": "命令说明"
         },
-        "requiresApproval": true/false,
+        "requiresApproval": 是否需要人工确认(true/false),
         "riskLevel": "low/medium/high",
         "isCommand": true
       }
@@ -356,7 +358,7 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
           "command": "具体命令",
           "description": "命令说明"
         },
-        "requiresApproval": true/false,
+        "requiresApproval": 是否需要人工确认(true/false),
         "riskLevel": "low/medium/high",
         "isCommand": true
       }
