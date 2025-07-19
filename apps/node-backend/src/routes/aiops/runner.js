@@ -1,7 +1,11 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const router = express.Router();
 const { useResponseSuccess, useResponseError } = require('../../utils/response');
+
+// 存储正在运行的命令进程
+const runningProcesses = new Map();
+let processIdCounter = 1;
 
 // 移除了白名单校验，只使用黑名单来阻止危险命令
 
@@ -172,7 +176,148 @@ function executeCommand(command, timeout = 10000) {
   });
 }
 
-// POST 请求处理
+/**
+ * 执行长时间运行的命令（支持流式输出）
+ * @param {string} command - 要执行的命令
+ * @param {object} options - 执行选项
+ * @returns {object} 包含进程ID和控制方法的对象
+ */
+function executeStreamCommand(command, options = {}) {
+  const processId = `cmd_${processIdCounter++}`;
+  const startTime = Date.now();
+  const encodingConfig = getEncodingConfig();
+  
+  // 解析命令和参数
+  const commandParts = command.trim().split(' ');
+  const cmd = commandParts[0];
+  const args = commandParts.slice(1);
+  
+  // 为Windows系统调整命令
+  let finalCmd = cmd;
+  let finalArgs = args;
+  
+  if (process.platform === 'win32') {
+    // Windows下使用cmd执行命令
+    finalCmd = 'cmd';
+    finalArgs = ['/c', command];
+  }
+  
+  // 创建子进程
+  const childProcess = spawn(finalCmd, finalArgs, {
+    shell: process.platform !== 'win32',
+    encoding: encodingConfig.encoding
+  });
+  
+  // 存储进程信息
+  const processInfo = {
+    id: processId,
+    command,
+    process: childProcess,
+    startTime,
+    status: 'running',
+    output: [],
+    error: null,
+    options
+  };
+  
+  runningProcesses.set(processId, processInfo);
+  
+  // 监听标准输出
+  childProcess.stdout.on('data', (data) => {
+    const output = convertEncoding(data);
+    processInfo.output.push({
+      type: 'stdout',
+      content: output,
+      timestamp: formatTimestamp()
+    });
+    
+    // 如果设置了输出回调，调用它
+    if (options.onOutput) {
+      options.onOutput(processId, 'stdout', output);
+    }
+  });
+  
+  // 监听标准错误
+  childProcess.stderr.on('data', (data) => {
+    const output = convertEncoding(data);
+    processInfo.output.push({
+      type: 'stderr',
+      content: output,
+      timestamp: formatTimestamp()
+    });
+    
+    if (options.onOutput) {
+      options.onOutput(processId, 'stderr', output);
+    }
+  });
+  
+  // 监听进程结束
+  childProcess.on('close', (code) => {
+    const endTime = Date.now();
+    processInfo.status = 'completed';
+    processInfo.exitCode = code;
+    processInfo.executionTime = endTime - startTime;
+    
+    if (options.onComplete) {
+      options.onComplete(processId, code);
+    }
+    
+    // 5分钟后清理进程信息
+    setTimeout(() => {
+      runningProcesses.delete(processId);
+    }, 5 * 60 * 1000);
+  });
+  
+  // 监听进程错误
+  childProcess.on('error', (error) => {
+    processInfo.status = 'error';
+    processInfo.error = error.message;
+    
+    if (options.onError) {
+      options.onError(processId, error);
+    }
+  });
+  
+  return {
+    processId,
+    kill: () => {
+      if (childProcess && !childProcess.killed) {
+        childProcess.kill();
+        processInfo.status = 'killed';
+        return true;
+      }
+      return false;
+    },
+    getStatus: () => processInfo.status,
+    getOutput: () => processInfo.output
+  };
+}
+
+/**
+ * 获取进程信息
+ * @param {string} processId - 进程ID
+ * @returns {object|null} 进程信息
+ */
+function getProcessInfo(processId) {
+  return runningProcesses.get(processId) || null;
+}
+
+/**
+ * 终止进程
+ * @param {string} processId - 进程ID
+ * @returns {boolean} 是否成功终止
+ */
+function killProcess(processId) {
+  const processInfo = runningProcesses.get(processId);
+  if (processInfo && processInfo.process && !processInfo.process.killed) {
+    processInfo.process.kill();
+    processInfo.status = 'killed';
+    return true;
+  }
+  return false;
+}
+
+// POST 请求处理 - 普通命令执行（短时间运行）
 router.post('/', async (req, res) => {
   try {
     const { command, timeout = 10000 } = req.body;
@@ -210,6 +355,144 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST 请求处理 - 流式命令执行（长时间运行）
+router.post('/stream', async (req, res) => {
+  try {
+    const { command } = req.body;
+
+    console.log('接收到的流式执行命令请求:', { command });
+
+    if (!command) {
+      return res.json(
+        useResponseError('缺少命令参数', '请提供要执行的命令')
+      );
+    }
+
+    // 安全检查
+    if (!isCommandSafe(command)) {
+      return res.json(
+        useResponseError('命令不安全', '该命令包含危险操作或在黑名单中')
+      );
+    }
+
+    // 执行流式命令
+    const commandControl = executeStreamCommand(command);
+
+    res.json(
+      useResponseSuccess({
+        message: '命令已启动',
+        processId: commandControl.processId,
+        status: 'running',
+        timestamp: formatTimestamp()
+      })
+    );
+
+  } catch (error) {
+    console.error('流式命令执行错误:', error);
+    res.json(
+      useResponseError('流式命令执行失败', error.message)
+    );
+  }
+});
+
+// GET 请求处理 - 获取进程状态和输出
+router.get('/process/:processId', (req, res) => {
+  try {
+    const { processId } = req.params;
+    const { from = 0 } = req.query; // 从第几条输出开始获取
+
+    const processInfo = getProcessInfo(processId);
+    
+    if (!processInfo) {
+      return res.json(
+        useResponseError('进程不存在', `找不到进程ID: ${processId}`)
+      );
+    }
+
+    // 获取指定范围的输出
+    const fromIndex = parseInt(from) || 0;
+    const output = processInfo.output.slice(fromIndex);
+
+    res.json(
+      useResponseSuccess({
+        message: '获取进程信息成功',
+        processId,
+        command: processInfo.command,
+        status: processInfo.status,
+        startTime: formatTimestamp(new Date(processInfo.startTime)),
+        executionTime: processInfo.executionTime || (Date.now() - processInfo.startTime),
+        exitCode: processInfo.exitCode,
+        error: processInfo.error,
+        output,
+        totalOutputCount: processInfo.output.length,
+        hasMoreOutput: processInfo.status === 'running'
+      })
+    );
+
+  } catch (error) {
+    console.error('获取进程信息错误:', error);
+    res.json(
+      useResponseError('获取进程信息失败', error.message)
+    );
+  }
+});
+
+// DELETE 请求处理 - 终止进程
+router.delete('/process/:processId', (req, res) => {
+  try {
+    const { processId } = req.params;
+
+    const success = killProcess(processId);
+    
+    if (success) {
+      res.json(
+        useResponseSuccess({
+          message: '进程已终止',
+          processId
+        })
+      );
+    } else {
+      res.json(
+        useResponseError('终止进程失败', '进程不存在或已经结束')
+      );
+    }
+
+  } catch (error) {
+    console.error('终止进程错误:', error);
+    res.json(
+      useResponseError('终止进程失败', error.message)
+    );
+  }
+});
+
+// GET 请求处理 - 获取所有运行中的进程
+router.get('/processes', (req, res) => {
+  try {
+    const processes = Array.from(runningProcesses.values()).map(info => ({
+      processId: info.id,
+      command: info.command,
+      status: info.status,
+      startTime: formatTimestamp(new Date(info.startTime)),
+      executionTime: info.executionTime || (Date.now() - info.startTime),
+      outputCount: info.output.length
+    }));
+
+    res.json(
+      useResponseSuccess({
+        message: '获取进程列表成功',
+        processes,
+        count: processes.length
+      })
+    );
+
+  } catch (error) {
+    console.error('获取进程列表错误:', error);
+    res.json(
+      useResponseError('获取进程列表失败', error.message)
+    );
+  }
+});
+
 // 获取安全策略信息
 router.get('/security-policy', (_req, res) => {
   const platform = process.platform;
@@ -224,7 +507,27 @@ router.get('/security-policy', (_req, res) => {
       },
       dangerousCommands: DANGEROUS_COMMANDS,
       dangerousChars: ['|', '&', ';', '>', '<', '`', '$'],
-      encoding: platform === 'win32' ? 'GBK/UTF-8' : 'UTF-8'
+      encoding: platform === 'win32' ? 'GBK/UTF-8' : 'UTF-8',
+      features: {
+        shortRunning: {
+          endpoint: 'POST /',
+          description: '执行短时间运行的命令，有超时限制',
+          timeout: '默认10秒',
+          usage: '适用于 ls, dir, ps 等快速执行的命令'
+        },
+        longRunning: {
+          endpoint: 'POST /stream',
+          description: '执行长时间运行的命令，支持流式输出',
+          timeout: '无超时限制',
+          usage: '适用于 netstat -e 60, ping -t, tail -f 等持续运行的命令'
+        },
+        processControl: {
+          status: 'GET /process/:processId',
+          kill: 'DELETE /process/:processId',
+          list: 'GET /processes',
+          description: '管理长时间运行的进程'
+        }
+      }
     })
   );
 });
