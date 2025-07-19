@@ -28,6 +28,9 @@ interface ChatMessage {
   isExecuting?: boolean;
   isServerCommand?: boolean;
   commandData?: any;
+  commandOutput?: string;
+  aiSummary?: string;
+  isSummaryTyping?: boolean;
 }
 
 defineOptions({ name: 'AiChatDialog' });
@@ -71,10 +74,19 @@ const buildChatHistory = (systemPrompt: string): ApiChatMessage[] => {
   );
 
   // 转换为API格式
-  const apiMessages: ApiChatMessage[] = validMessages.map((msg) => ({
-    role: msg.type === 'user' ? ('user' as const) : ('assistant' as const),
-    content: msg.content,
-  }));
+  const apiMessages: ApiChatMessage[] = validMessages.map((msg) => {
+    let content = msg.content;
+
+    // 如果是服务器命令消息且有AI总结，只使用AI总结作为上下文
+    if (msg.isServerCommand && msg.aiSummary) {
+      content = msg.aiSummary;
+    }
+
+    return {
+      role: msg.type === 'user' ? ('user' as const) : ('assistant' as const),
+      content: content,
+    };
+  });
 
   // 如果消息数量超过限制，进行截断（但保留system消息）
   let finalMessages: ApiChatMessage[];
@@ -126,8 +138,9 @@ const handleSendMessage = async () => {
   }
 };
 
-// 生成AI对命令结果的总结
+// 生成AI对命令结果的总结（合并到现有消息中）
 const generateCommandSummary = async (
+  resultMessage: ChatMessage,
   commandData: any,
   commandOutput: string,
 ) => {
@@ -170,70 +183,48 @@ const generateCommandSummary = async (
     });
 
     let summaryContent = '';
-    let summaryMessage: ChatMessage | null = null;
-    let isFirstChunk = true;
+
+    // 找到结果消息的索引
+    const messageIndex = messages.value.findIndex(
+      (msg) => msg.id === resultMessage.id,
+    );
+
+    if (messageIndex === -1) return;
+
+    // 设置总结正在生成状态
+    messages.value[messageIndex]!.isSummaryTyping = true;
+    messages.value[messageIndex]!.aiSummary = '';
 
     for await (const chunk of summaryGenerator) {
-      // 第一次收到数据时创建总结消息
-      if (isFirstChunk) {
-        summaryMessage = {
-          id: Date.now().toString() + '_summary',
-          type: 'ai',
-          content: '',
-          timestamp: new Date(),
-          isTyping: true,
-        };
-
-        messages.value.push(summaryMessage);
-        await nextTick();
-        scrollToBottom();
-        isFirstChunk = false;
-      }
-
       summaryContent += chunk;
 
-      // 更新消息内容，实现打字机效果
-      if (summaryMessage) {
-        const messageIndex = messages.value.findIndex(
-          (msg) => msg.id === summaryMessage!.id,
-        );
-        if (messageIndex !== -1) {
-          messages.value[messageIndex]!.content = summaryContent;
-          await nextTick();
-          scrollToBottom();
+      // 更新消息的AI总结内容，实现打字机效果
+      messages.value[messageIndex]!.aiSummary = summaryContent;
+      await nextTick();
+      scrollToBottom();
 
-          // 添加打字机延迟效果
-          const delay = Math.min(30, Math.max(10, chunk.length * 2));
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
+      // 添加打字机延迟效果
+      const delay = Math.min(30, Math.max(10, chunk.length * 2));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
     // 完成总结，移除typing状态
-    if (summaryMessage) {
-      const messageIndex = messages.value.findIndex(
-        (msg) => msg.id === summaryMessage.id,
-      );
-      if (messageIndex !== -1) {
-        messages.value[messageIndex]!.content = summaryContent;
-        messages.value[messageIndex]!.isTyping = false;
-        await nextTick();
-        scrollToBottom();
-      }
-    }
-  } catch (error) {
-    console.error('生成命令总结失败:', error);
-    // 如果总结失败，添加一个简单的提示消息
-    const errorSummaryMessage: ChatMessage = {
-      id: Date.now().toString() + '_summary_error',
-      type: 'ai',
-      content:
-        '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。',
-      timestamp: new Date(),
-    };
-    messages.value.push(errorSummaryMessage);
+    messages.value[messageIndex]!.aiSummary = summaryContent;
+    messages.value[messageIndex]!.isSummaryTyping = false;
     await nextTick();
     scrollToBottom();
+  } catch (error) {
+    console.error('生成命令总结失败:', error);
+    // 如果总结失败，设置错误提示
+    const messageIndex = messages.value.findIndex(
+      (msg) => msg.id === resultMessage.id,
+    );
+    if (messageIndex !== -1) {
+      messages.value[messageIndex]!.aiSummary = '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。';
+      messages.value[messageIndex]!.isSummaryTyping = false;
+      await nextTick();
+      scrollToBottom();
+    }
   }
 };
 
@@ -536,7 +527,7 @@ const simulateAiResponse = async (userInput: string) => {
 
             if (res.result.output) {
               // 生成AI对命令结果的总结
-              await generateCommandSummary(jsonData, res.result.output);
+              await generateCommandSummary(resultMessage, jsonData, res.result.output);
             }
           }
         }
@@ -743,6 +734,23 @@ watch(
                 命令执行完成
               </div>
               <pre class="server-output">{{ msg.content }}</pre>
+
+              <!-- AI总结部分 -->
+              <div v-if="msg.aiSummary || msg.isSummaryTyping" class="ai-summary-section">
+                <div class="ai-summary-header">
+                  <IconifyIcon icon="lucide:brain" class="mr-2" />
+                  <Spin v-if="msg.isSummaryTyping" size="small" class="mr-2" />
+                  AI分析总结
+                </div>
+                <div class="ai-summary-content">
+                  <MarkdownRenderer
+                    :content="msg.aiSummary || '正在分析命令结果...'"
+                    :enable-highlight="true"
+                    :stream-mode="true"
+                    :is-streaming="msg.isSummaryTyping"
+                  />
+                </div>
+              </div>
             </div>
             <!-- 普通消息UI -->
             <div v-else class="message-text" :class="{ typing: msg.isTyping }">
@@ -1317,7 +1325,7 @@ watch(
   border: 1px solid #e1e4e8;
   border-radius: 4px;
   padding: 8px;
-  margin: 0;
+  margin: 0 0 12px 0;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.4;
@@ -1325,6 +1333,71 @@ watch(
   word-wrap: break-word;
   max-height: 300px;
   overflow-y: auto;
+}
+
+/* AI总结部分样式 */
+.ai-summary-section {
+  border-top: 1px solid #e1e4e8;
+  padding-top: 12px;
+  margin-top: 8px;
+}
+
+.ai-summary-header {
+  display: flex;
+  align-items: center;
+  color: #1890ff;
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.ai-summary-content {
+  background: #f0f8ff;
+  border: 1px solid #d6e7ff;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+
+  /* AI总结中的Markdown样式调整 */
+  :deep(.markdown-renderer) {
+    .markdown-content {
+      margin: 0;
+
+      p {
+        margin: 0.3em 0;
+
+        &:first-child {
+          margin-top: 0;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      ul, ol {
+        margin: 0.3em 0;
+        padding-left: 1.2em;
+
+        &:first-child {
+          margin-top: 0;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      h1, h2, h3, h4, h5, h6 {
+        margin: 0.5em 0 0.3em 0;
+
+        &:first-child {
+          margin-top: 0;
+        }
+      }
+    }
+  }
 }
 
 // 浅色适配模式
@@ -1469,6 +1542,27 @@ watch(
     background: #0d1117;
     border-color: #30363d;
     color: #e6edf3;
+  }
+
+  /* 深色模式下的AI总结样式 */
+  .ai-summary-section {
+    border-top-color: #30363d;
+  }
+
+  .ai-summary-header {
+    color: #58a6ff;
+  }
+
+  .ai-summary-content {
+    background: #0d1421;
+    border-color: #1f6feb;
+    color: #e6edf3;
+
+    :deep(.markdown-renderer) {
+      .markdown-content {
+        color: #e6edf3;
+      }
+    }
   }
 
   /* 深色模式下的模态框 */
