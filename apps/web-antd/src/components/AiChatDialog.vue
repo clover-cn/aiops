@@ -173,39 +173,9 @@ const pollProcessStatus = async (processId: string, messageId: string) => {
 
       // 检查进程是否还在运行
       const isRunning = hasMoreOutput || status === 'running';
-
-      if (!isRunning) {
-        // 进程已结束
-        messages.value[messageIndex]!.isPolling = false;
-        messages.value[messageIndex]!.executionStatus = error ? 'failed' : 'completed';
-
-        // 终止进程（确保清理）
-        try {
-          await terminateProcessApi(processId);
-        } catch (terminateError) {
-          console.log('进程已自然结束，无需手动终止');
-        }
-
-        console.log('命令执行完成，输出数组:', output);
-        console.log('格式化后的输出:', formattedOutput);
-
-        // 如果有输出，生成AI总结
-        if (output && Array.isArray(output) && output.length > 0) {
-          const resultMessage = messages.value[messageIndex]!;
-          await generateCommandSummary(
-            resultMessage,
-            resultMessage.commandData,
-            formattedOutput,
-          );
-        }
-
-        await nextTick();
-        scrollToBottom();
-        return;
-      }
-
-      // 检查是否超时
-      if (Date.now() - startTime > maxPollingTime) {
+      
+      // 检查进程是否还在运行或者超时
+      if (!isRunning || (Date.now() - startTime > maxPollingTime)) {
         // 进程已结束
         messages.value[messageIndex]!.isPolling = false;
         messages.value[messageIndex]!.executionStatus = error ? 'failed' : 'completed';
