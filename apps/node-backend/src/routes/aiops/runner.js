@@ -8,8 +8,8 @@ const runningProcesses = new Map();
 let processIdCounter = 1;
 
 // 配置常量
-const DEFAULT_MAX_RUNTIME = 5 * 60 * 1000; // 默认最大运行时间：5分钟
-const CLEANUP_DELAY = 2 * 60 * 1000; // 进程结束后清理延迟：2分钟
+const DEFAULT_MAX_RUNTIME = 2 * 60 * 1000; // 默认最大运行时间：2分钟
+const CLEANUP_DELAY = 1 * 60 * 1000; // 进程结束后清理延迟：1分钟
 
 // 移除了白名单校验，只使用黑名单来阻止危险命令
 
@@ -535,13 +535,13 @@ router.get('/process/:processId', (req, res) => {
         output,
         totalOutputCount: processInfo.output.length,
         hasMoreOutput: processInfo.status === 'running',
-        timeout: {
-          maxRuntime: processInfo.maxRuntime,
-          maxRuntimeMinutes: processInfo.maxRuntime ? Math.round(processInfo.maxRuntime / 1000 / 60) : null,
-          remainingTime: remainingTime,
-          remainingMinutes: remainingTime ? Math.round(remainingTime / 1000 / 60) : null,
-          isNearTimeout: remainingTime && remainingTime < 5 * 60 * 1000 // 剩余时间少于5分钟
-        }
+        // timeout: {
+        //   maxRuntime: processInfo.maxRuntime,
+        //   maxRuntimeMinutes: processInfo.maxRuntime ? Math.round(processInfo.maxRuntime / 1000 / 60) : null,
+        //   remainingTime: remainingTime,
+        //   remainingMinutes: remainingTime ? Math.round(remainingTime / 1000 / 60) : null,
+        //   isNearTimeout: remainingTime && remainingTime < 5 * 60 * 1000 // 剩余时间少于5分钟
+        // }
       })
     );
 

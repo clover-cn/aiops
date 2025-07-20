@@ -17,7 +17,13 @@ import {
   type ChatMessage as ApiChatMessage,
   ragQueryApi,
 } from '#/api/index';
-import { getExecuteCommandApi } from '#/api/index';
+import {
+  getExecuteCommandApi,
+  executeStreamCommandApi,
+  getProcessStatusApi,
+  terminateProcessApi,
+  getRunningProcessesApi,
+} from '#/api/index';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 interface ChatMessage {
   id: string;
@@ -31,6 +37,12 @@ interface ChatMessage {
   commandOutput?: string;
   aiSummary?: string;
   isSummaryTyping?: boolean;
+  // 流式执行相关字段
+  isStreamCommand?: boolean;
+  processId?: string;
+  streamOutput?: string;
+  isPolling?: boolean;
+  executionStatus?: 'running' | 'completed' | 'failed' | 'timeout';
 }
 
 defineOptions({ name: 'AiChatDialog' });
@@ -105,6 +117,149 @@ const buildChatHistory = (systemPrompt: string): ApiChatMessage[] => {
     },
     ...finalMessages,
   ];
+};
+
+// 所有命令都使用流式执行，不再区分命令类型
+
+// 将输出数组转换为显示文本
+const formatOutputArray = (outputArray: any[]): string => {
+  if (!Array.isArray(outputArray) || outputArray.length === 0) {
+    return '等待命令输出...';
+  }
+
+  return outputArray
+    .map((item) => {
+      if (item && typeof item === 'object' && item.content) {
+        // 添加时间戳前缀（可选）
+        const timestamp = item.timestamp ? `[${item.timestamp}] ` : '';
+        const typePrefix =
+          item.type === 'stderr'
+            ? '[错误] '
+            : item.type === 'system'
+              ? '[系统] '
+              : '';
+        return `${timestamp}${typePrefix}${item.content}`;
+      }
+      return String(item);
+    })
+    .join('');
+};
+
+// 轮询获取进程状态和输出
+const pollProcessStatus = async (processId: string, messageId: string) => {
+  // const maxPollingTime = 1 * 60 * 1000; // 最大轮询1分钟
+  const maxPollingTime = 10 * 1000; // 最大轮询10秒
+  const pollingInterval = 2000; // 每2秒轮询一次
+  const startTime = Date.now();
+
+  const poll = async () => {
+    try {
+      const response = await getProcessStatusApi(processId);
+      const { status, output, hasMoreOutput, error } = response;
+      console.log('轮询进程状态:', { status, output, hasMoreOutput, error });
+
+      // 找到对应的消息
+      const messageIndex = messages.value.findIndex(
+        (msg) => msg.id === messageId,
+      );
+      if (messageIndex === -1) return;
+
+      // 处理输出数组格式
+      const formattedOutput = formatOutputArray(output);
+
+      // 更新消息的输出内容
+      messages.value[messageIndex]!.streamOutput = formattedOutput;
+      messages.value[messageIndex]!.content = formattedOutput;
+
+      // 检查进程是否还在运行
+      const isRunning = hasMoreOutput || status === 'running';
+
+      if (!isRunning) {
+        // 进程已结束
+        messages.value[messageIndex]!.isPolling = false;
+        messages.value[messageIndex]!.executionStatus = error ? 'failed' : 'completed';
+
+        // 终止进程（确保清理）
+        try {
+          await terminateProcessApi(processId);
+        } catch (terminateError) {
+          console.log('进程已自然结束，无需手动终止');
+        }
+
+        console.log('命令执行完成，输出数组:', output);
+        console.log('格式化后的输出:', formattedOutput);
+
+        // 如果有输出，生成AI总结
+        if (output && Array.isArray(output) && output.length > 0) {
+          const resultMessage = messages.value[messageIndex]!;
+          await generateCommandSummary(
+            resultMessage,
+            resultMessage.commandData,
+            formattedOutput,
+          );
+        }
+
+        await nextTick();
+        scrollToBottom();
+        return;
+      }
+
+      // 检查是否超时
+      if (Date.now() - startTime > maxPollingTime) {
+        // 进程已结束
+        messages.value[messageIndex]!.isPolling = false;
+        messages.value[messageIndex]!.executionStatus = error ? 'failed' : 'completed';
+
+        // 终止进程（确保清理）
+        try {
+          await terminateProcessApi(processId);
+        } catch (terminateError) {
+          console.log('进程已自然结束，无需手动终止');
+        }
+
+        console.log('命令执行完成，输出数组:', output);
+        console.log('格式化后的输出:', formattedOutput);
+
+        // 如果有输出，生成AI总结
+        if (output && Array.isArray(output) && output.length > 0) {
+          const resultMessage = messages.value[messageIndex]!;
+          await generateCommandSummary(
+            resultMessage,
+            resultMessage.commandData,
+            formattedOutput,
+          );
+        }
+
+        await nextTick();
+        scrollToBottom();
+        return;
+      }
+
+      await nextTick();
+      scrollToBottom();
+
+      // 继续轮询
+      setTimeout(poll, pollingInterval);
+    } catch (error) {
+      console.error('轮询进程状态失败:', error);
+
+      const messageIndex = messages.value.findIndex(
+        (msg) => msg.id === messageId,
+      );
+      if (messageIndex !== -1) {
+        messages.value[messageIndex]!.isPolling = false;
+        messages.value[messageIndex]!.executionStatus = 'failed';
+        messages.value[messageIndex]!.content =
+          `轮询进程状态失败: ${error instanceof Error ? error.message : '未知错误'}`;
+
+        await nextTick();
+        scrollToBottom();
+      }
+    }
+  };
+
+  // 开始轮询
+  setTimeout(poll, pollingInterval);
 };
 
 const handleSendMessage = async () => {
@@ -220,7 +375,8 @@ const generateCommandSummary = async (
       (msg) => msg.id === resultMessage.id,
     );
     if (messageIndex !== -1) {
-      messages.value[messageIndex]!.aiSummary = '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。';
+      messages.value[messageIndex]!.aiSummary =
+        '命令已执行完成，但生成结果总结时出现问题。您可以查看上方的执行结果详情。';
       messages.value[messageIndex]!.isSummaryTyping = false;
       await nextTick();
       scrollToBottom();
@@ -264,7 +420,9 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
       systemPrompt += `\n基于您的输入"${userInput}"，我找到了以下相关的运维知识：\n`;
 
       ragResult.relevantKnowledge.results.forEach((metadata: any, index) => {
-        console.log(`知识条目 ${index + 1} 知识条目名称: ${metadata.description} 相似度: ${metadata.similarity}`);
+        console.log(
+          `知识条目 ${index + 1} 知识条目名称: ${metadata.description} 相似度: ${metadata.similarity}`,
+        );
 
         systemPrompt += `\n### 知识条目 ${index + 1} (相似度: ${(metadata.similarity * 100).toFixed(1)}%)
 - **意图标识**: ${metadata.intent}
@@ -473,6 +631,7 @@ const simulateAiResponse = async (userInput: string) => {
           if (jsonData.isCommand) {
             console.log('AI回复的JSON数据:', jsonData);
             console.log('执行命令:', jsonData.commands.command);
+
             // 移除包含JSON数据的AI消息，直接显示执行状态
             const jsonMessageIndex = messages.value.findIndex(
               (msg) => msg.id === aiMessage.id,
@@ -481,53 +640,77 @@ const simulateAiResponse = async (userInput: string) => {
               messages.value.splice(jsonMessageIndex, 1);
             }
 
-            // 添加正在执行命令的消息
-            const executingMessage: ChatMessage = {
-              id: Date.now().toString() + '_executing',
+            const command = jsonData.commands.command;
+
+            // 所有命令都使用流式执行
+            console.log('使用流式执行命令:', command);
+
+            // 添加流式执行中的消息
+            const streamingMessage: ChatMessage = {
+              id: Date.now().toString() + '_streaming',
               type: 'ai',
-              content: '命令执行中...',
+              content: '正在启动流式命令执行...',
               timestamp: new Date(),
               isTyping: false,
               isExecuting: true,
+              isStreamCommand: true,
               commandData: jsonData,
+              streamOutput: '',
+              isPolling: false,
+              executionStatus: 'running',
             };
 
-            messages.value.push(executingMessage);
-            await nextTick();
-            scrollToBottom();
-            let res = await getExecuteCommandApi(jsonData.commands.command);
-            console.log('命令执行结果:', res);
-            // 移除执行中的消息
-            const executingIndex = messages.value.findIndex(
-              (msg) => msg.id === executingMessage.id,
-            );
-            if (executingIndex !== -1) {
-              messages.value.splice(executingIndex, 1);
-            }
-            const Command = `${jsonData.commands.type}命令执行结果:
-    - 命令: ${jsonData.commands.command}
-    - 描述: ${jsonData.commands.description}
-    - 风险级别: ${jsonData.riskLevel}
-    - 执行结果: ${res.result.output || '无输出'}
-    - 执行状态: ${res.result.success ? '成功' : '失败'}
-    - 执行时间: ${res.result.timestamp}`;
-            // 添加执行结果消息
-            const resultMessage: ChatMessage = {
-              id: Date.now().toString() + '_result',
-              type: 'ai',
-              content: res.result.output || Command,
-              timestamp: new Date(),
-              isTyping: false,
-              isServerCommand: true,
-              commandData: jsonData,
-            };
-            messages.value.push(resultMessage);
+            messages.value.push(streamingMessage);
             await nextTick();
             scrollToBottom();
 
-            if (res.result.output) {
-              // 生成AI对命令结果的总结
-              await generateCommandSummary(resultMessage, jsonData, res.result.output);
+            try {
+              // 启动流式执行
+              const streamResponse = await executeStreamCommandApi(command);
+              console.log('流式执行响应:', streamResponse);
+
+              if (streamResponse.processId) {
+                // 更新消息状态
+                const messageIndex = messages.value.findIndex(
+                  (msg) => msg.id === streamingMessage.id,
+                );
+                if (messageIndex !== -1) {
+                  messages.value[messageIndex]!.processId =
+                    streamResponse.processId;
+                  messages.value[messageIndex]!.content =
+                    '命令已启动，正在获取输出...';
+                  messages.value[messageIndex]!.isExecuting = false;
+                  messages.value[messageIndex]!.isServerCommand = true;
+                  messages.value[messageIndex]!.isPolling = true;
+
+                  await nextTick();
+                  scrollToBottom();
+
+                  // 开始轮询获取进程状态和输出
+                  pollProcessStatus(
+                    streamResponse.processId,
+                    streamingMessage.id,
+                  );
+                }
+              } else {
+                throw new Error(streamResponse.error || '启动流式执行失败');
+              }
+            } catch (error) {
+              console.error('流式执行失败:', error);
+
+              // 更新消息为错误状态
+              const messageIndex = messages.value.findIndex(
+                (msg) => msg.id === streamingMessage.id,
+              );
+              if (messageIndex !== -1) {
+                messages.value[messageIndex]!.content =
+                  `流式执行失败: ${error instanceof Error ? error.message : '未知错误'}`;
+                messages.value[messageIndex]!.isExecuting = false;
+                messages.value[messageIndex]!.executionStatus = 'failed';
+
+                await nextTick();
+                scrollToBottom();
+              }
             }
           }
         }
@@ -707,11 +890,12 @@ watch(
               <div class="executing-header">
                 <IconifyIcon icon="lucide:terminal" class="mr-2" />
                 <Spin size="small" class="mr-2" />
-                正在执行命令...
+                正在启动流式命令执行...
               </div>
               <div class="command-info">
                 <div class="command-title">
                   命令类型: {{ msg.commandData?.commands?.type }}
+                  <span class="stream-badge">流式执行</span>
                 </div>
                 <div class="command-desc">
                   {{ msg.commandData?.commands?.description }}
@@ -722,6 +906,41 @@ watch(
                 <div class="risk-level" :class="msg.commandData?.riskLevel">
                   风险级别: {{ msg.commandData?.riskLevel?.toUpperCase() }}
                 </div>
+              </div>
+            </div>
+            <!-- 流式命令执行中的UI -->
+            <div
+              v-else-if="msg.isStreamCommand && msg.isPolling"
+              class="message-text stream-command"
+            >
+              <div class="stream-command-header">
+                <IconifyIcon icon="lucide:activity" class="mr-2" />
+                <Spin size="small" class="mr-2" />
+                流式命令执行中...
+                <span v-if="msg.processId" class="process-id"
+                  >进程ID: {{ msg.processId }}</span
+                >
+              </div>
+              <div class="command-info">
+                <div class="command-title">
+                  命令类型: {{ msg.commandData?.commands?.type }}
+                  <span class="stream-badge">流式执行</span>
+                </div>
+                <div class="command-desc">
+                  {{ msg.commandData?.commands?.description }}
+                </div>
+                <div class="command-text">
+                  {{ msg.commandData?.commands?.command }}
+                </div>
+              </div>
+              <div class="stream-output-section">
+                <div class="stream-output-header">
+                  <IconifyIcon icon="lucide:monitor" class="mr-2" />
+                  实时输出
+                </div>
+                <pre class="stream-output">{{
+                  msg.streamOutput || '等待命令输出...'
+                }}</pre>
               </div>
             </div>
             <!-- 服务器命令结果UI -->
@@ -736,7 +955,10 @@ watch(
               <pre class="server-output">{{ msg.content }}</pre>
 
               <!-- AI总结部分 -->
-              <div v-if="msg.aiSummary || msg.isSummaryTyping" class="ai-summary-section">
+              <div
+                v-if="msg.aiSummary || msg.isSummaryTyping"
+                class="ai-summary-section"
+              >
                 <div class="ai-summary-header">
                   <IconifyIcon icon="lucide:brain" class="mr-2" />
                   <Spin v-if="msg.isSummaryTyping" size="small" class="mr-2" />
@@ -1303,6 +1525,94 @@ watch(
   }
 }
 
+/* 流式执行标识 */
+.stream-badge {
+  background: #e6f7ff;
+  color: #1890ff;
+  border: 1px solid #91d5ff;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+/* 流式命令执行中样式 */
+.stream-command {
+  background: #f0f8ff;
+  border: 1px solid #91d5ff;
+  border-radius: 6px;
+  padding: 12px;
+  animation: pulse-blue 2s infinite;
+}
+
+.stream-command-header {
+  display: flex;
+  align-items: center;
+  color: #1890ff;
+  font-weight: 500;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.process-id {
+  background: #f6ffed;
+  color: #52c41a;
+  border: 1px solid #b7eb8f;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.stream-output-section {
+  margin-top: 12px;
+  border-top: 1px solid #d6e7ff;
+  padding-top: 8px;
+}
+
+.stream-output-header {
+  display: flex;
+  align-items: center;
+  color: #1890ff;
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.stream-output {
+  background: #fafbfc;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  color: #24292e;
+}
+
+@keyframes pulse-blue {
+  0% {
+    box-shadow: 0 0 0 0 rgba(24, 144, 255, 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(24, 144, 255, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(24, 144, 255, 0);
+  }
+}
+
 /* 服务器命令结果样式 */
 .server-command {
   background: #f6f8fa;
@@ -1376,7 +1686,8 @@ watch(
         }
       }
 
-      ul, ol {
+      ul,
+      ol {
         margin: 0.3em 0;
         padding-left: 1.2em;
 
@@ -1389,7 +1700,12 @@ watch(
         }
       }
 
-      h1, h2, h3, h4, h5, h6 {
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6 {
         margin: 0.5em 0 0.3em 0;
 
         &:first-child {
@@ -1507,6 +1823,42 @@ watch(
 
   .command-text {
     background: #161b22;
+    border-color: #30363d;
+    color: #e6edf3;
+  }
+
+  /* 深色模式下的流式执行样式 */
+  .stream-badge {
+    background: #0d1421;
+    color: #58a6ff;
+    border-color: #1f6feb;
+  }
+
+  .stream-command {
+    background: #0d1421;
+    border-color: #1f6feb;
+  }
+
+  .stream-command-header {
+    color: #58a6ff;
+  }
+
+  .process-id {
+    background: #162312;
+    color: #73d13d;
+    border-color: #389e0d;
+  }
+
+  .stream-output-section {
+    border-top-color: #1f6feb;
+  }
+
+  .stream-output-header {
+    color: #58a6ff;
+  }
+
+  .stream-output {
+    background: #0d1117;
     border-color: #30363d;
     color: #e6edf3;
   }

@@ -109,11 +109,39 @@ export async function getNetworkTrafficApi() {
 }
 
 /**
- * 获取命令执行结果
+ * 获取命令执行结果（短时间运行命令）
  */
 export async function getExecuteCommandApi(command: string) {
   // return requestClient.get('/aiops/runner', { params: { data: req } });
   return requestClient.post('/aiops/runner', { command }, { timeout: 30000 });
+}
+
+/**
+ * 流式命令执行（长时间运行命令）
+ */
+export async function executeStreamCommandApi(command: string) {
+  return requestClient.post('/aiops/runner/stream', { command });
+}
+
+/**
+ * 获取进程状态和输出
+ */
+export async function getProcessStatusApi(processId: string) {
+  return requestClient.get(`/aiops/runner/process/${processId}`);
+}
+
+/**
+ * 终止进程
+ */
+export async function terminateProcessApi(processId: string) {
+  return requestClient.delete(`/aiops/runner/process/${processId}`);
+}
+
+/**
+ * 获取所有运行中的进程
+ */
+export async function getRunningProcessesApi() {
+  return requestClient.get('/aiops/runner/processes');
 }
 
 // RAG相关API函数
