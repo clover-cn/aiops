@@ -18,11 +18,9 @@ import {
   ragQueryApi,
 } from '#/api/index';
 import {
-  getExecuteCommandApi,
   executeStreamCommandApi,
   getProcessStatusApi,
   terminateProcessApi,
-  getRunningProcessesApi,
 } from '#/api/index';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 interface ChatMessage {
