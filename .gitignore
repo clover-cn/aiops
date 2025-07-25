@@ -165,6 +165,7 @@ storybook-static
 # Node.js Backend specific
 apps/node-backend/uploads/
 apps/node-backend/test-*.js
+apps/node-backend/.env
 
 # Backend Mock
 apps/backend-mock/.output/
