@@ -1,18 +1,11 @@
 <script lang="ts" setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { Badge, List, ListItem, Avatar } from 'ant-design-vue';
+import { Badge, List, ListItem, Avatar, message } from 'ant-design-vue';
 import { usePreferences } from '@vben/preferences';
-
-interface Alert {
-  id: string;
-  level: 'critical' | 'warning' | 'info';
-  title: string;
-  description: string;
-  time: string;
-  service: string;
-}
+import { getAlertsApi, type Alert } from '#/api/aiops';
 
 const alerts = ref<Alert[]>([]);
+const loading = ref(false);
 const { isDark } = usePreferences();
 
 // 计算主题相关的样式类
@@ -42,52 +35,71 @@ const themeClasses = computed(() => {
   }
 });
 
-// 模拟告警数据
-const generateAlerts = (): Alert[] => {
-  const alertTypes = [
+/**
+ * 获取告警数据
+ */
+const fetchAlerts = async () => {
+  try {
+    loading.value = true;
+    const response = await getAlertsApi();
+    // API返回的是包装后的响应，需要检查response的结构
+    if (Array.isArray(response)) {
+      alerts.value = response.slice(0, 5); // 只显示最新5条
+    } else if (response && typeof response === 'object' && 'data' in response) {
+      alerts.value = (response as any).data.slice(0, 5);
+    } else {
+      console.error('获取告警数据失败: 响应格式异常');
+      alerts.value = generateMockAlerts();
+    }
+  } catch (error) {
+    console.error('获取告警数据异常:', error);
+    // 如果API异常，使用模拟数据作为后备
+    alerts.value = generateMockAlerts();
+  } finally {
+    loading.value = false;
+  }
+};
+
+/**
+ * 生成模拟告警数据（作为后备）
+ */
+const generateMockAlerts = (): Alert[] => {
+  const mockAlerts = [
     {
+      id: `mock-alert-${Date.now()}-1`,
+      key: 'cpu_alert',
       level: 'critical' as const,
       title: 'CPU使用率过高',
-      description: '服务器CPU使用率超过90%',
-      service: 'web-server-01'
+      description: 'Web服务器CPU使用率达到92%，超过安全阈值',
+      service: 'Web服务器',
+      metricType: 'cpu',
+      currentValue: 92,
+      threshold: 85,
+      unit: '%',
+      time: new Date().toISOString(),
+      timeDisplay: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+      status: 'active' as const,
+      count: 1
     },
     {
+      id: `mock-alert-${Date.now()}-2`,
+      key: 'memory_alert',
       level: 'warning' as const,
       title: '内存使用率告警',
-      description: '内存使用率超过80%',
-      service: 'database-01'
-    },
-    {
-      level: 'critical' as const,
-      title: '磁盘空间不足',
-      description: '磁盘使用率超过95%',
-      service: 'storage-01'
-    },
-    {
-      level: 'warning' as const,
-      title: '网络延迟异常',
-      description: '网络响应时间超过阈值',
-      service: 'api-gateway'
-    },
-    {
-      level: 'info' as const,
-      title: '服务重启',
-      description: '微服务自动重启完成',
-      service: 'user-service'
-    },
-    {
-      level: 'critical' as const,
-      title: '数据库连接异常',
-      description: '数据库连接池耗尽',
-      service: 'mysql-cluster'
+      description: '数据库服务器内存使用率达到78%',
+      service: '数据库服务器',
+      metricType: 'memory',
+      currentValue: 78,
+      threshold: 75,
+      unit: '%',
+      time: new Date().toISOString(),
+      timeDisplay: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+      status: 'active' as const,
+      count: 1
     }
   ];
 
-  return alertTypes.map((alert, index) => ({
-    id: `alert-${Date.now()}-${index}`,
-    ...alert,
-    time: new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString('zh-CN', { hour12: false })
-  })).slice(0, 5); // 只显示最新5条
+  return mockAlerts.slice(0, 5);
 };
 
 const getLevelColor = (level: string) => {
@@ -131,14 +143,14 @@ const getAvatarIcon = (level: string) => {
 
 let timer: NodeJS.Timeout | null = null;
 
-const updateAlerts = () => {
-  alerts.value = generateAlerts();
+const updateAlerts = async () => {
+  await fetchAlerts();
 };
 
 onMounted(() => {
   updateAlerts();
-  // 每60秒更新一次告警数据
-  timer = setInterval(updateAlerts, 60000);
+  // 每30秒更新一次告警数据
+  timer = setInterval(updateAlerts, 30000);
 });
 
 onUnmounted(() => {
@@ -188,7 +200,7 @@ onUnmounted(() => {
                   <p :class="`${themeClasses.descColor} text-xs`">{{ item.description }}</p>
                   <div class="flex items-center justify-between text-xs">
                     <span :class="themeClasses.serviceColor">{{ item.service }}</span>
-                    <span :class="themeClasses.updateText">{{ item.time }}</span>
+                    <span :class="themeClasses.updateText">{{ item.timeDisplay || item.time }}</span>
                   </div>
                 </div>
               </template>

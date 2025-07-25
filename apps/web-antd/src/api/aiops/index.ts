@@ -18,6 +18,78 @@ export interface NetworkTraffic {
   };
 }
 
+export interface Alert {
+  id: string;
+  key: string;
+  level: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  service: string;
+  metricType: string;
+  currentValue: number;
+  threshold: number;
+  unit: string;
+  time: string;
+  timeDisplay: string;
+  status: 'active' | 'resolved';
+  count: number;
+  resolvedTime?: string;
+}
+
+export interface AlertStats {
+  active: {
+    total: number;
+    critical: number;
+    warning: number;
+    info: number;
+  };
+  today: {
+    total: number;
+    critical: number;
+    warning: number;
+    info: number;
+  };
+}
+
+export interface AlertConfig {
+  thresholds: {
+    cpu: {
+      warning: number;
+      critical: number;
+    };
+    memory: {
+      warning: number;
+      critical: number;
+    };
+    disk: {
+      warning: number;
+      critical: number;
+    };
+  };
+  checkInterval: number;
+  retentionDays: number;
+  maxAlerts: number;
+}
+
+export interface SystemOverview {
+  services: {
+    online: number;
+    total: number;
+  };
+  alerts: {
+    active: number;
+    today: number;
+  };
+  cpu: {
+    current: number;
+    average: number;
+  };
+  memory: {
+    current: number;
+    average: number;
+  };
+}
+
 export interface DockerSystemInfo {
   containers: {
     total: number;
@@ -232,6 +304,59 @@ export async function terminateProcessApi(processId: string) {
  */
 export async function getRunningProcessesApi() {
   return requestClient.get('/aiops/runner/processes');
+}
+
+// 告警相关API函数
+
+/**
+ * 获取活跃告警列表
+ */
+export async function getAlertsApi() {
+  return requestClient.get<Alert[]>('/aiops/alerts');
+}
+
+/**
+ * 获取告警统计信息
+ */
+export async function getAlertStatsApi() {
+  return requestClient.get<AlertStats>('/aiops/alerts/stats');
+}
+
+/**
+ * 获取告警历史记录
+ */
+export async function getAlertHistoryApi(limit?: number) {
+  return requestClient.get<Alert[]>('/aiops/alerts/history', {
+    params: { limit }
+  });
+}
+
+/**
+ * 获取告警配置
+ */
+export async function getAlertConfigApi() {
+  return requestClient.get<AlertConfig>('/aiops/alerts/config');
+}
+
+/**
+ * 更新告警阈值配置
+ */
+export async function updateAlertThresholdsApi(thresholds: AlertConfig['thresholds']) {
+  return requestClient.put('/aiops/alerts/config/thresholds', { thresholds });
+}
+
+/**
+ * 手动触发告警检查
+ */
+export async function triggerAlertCheckApi() {
+  return requestClient.post('/aiops/alerts/check');
+}
+
+/**
+ * 获取系统概览数据（包含告警统计）
+ */
+export async function getSystemOverviewApi() {
+  return requestClient.get<SystemOverview>('/aiops/alerts/overview');
 }
 
 // RAG相关API函数

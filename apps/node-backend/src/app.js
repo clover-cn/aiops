@@ -11,6 +11,7 @@ const userRoutes = require('./routes/user');
 const menuRoutes = require('./routes/menu');
 const uploadRoutes = require('./routes/upload');
 const aiopsRoutes = require('./routes/aiops/index');
+const alertManager = require('./aiops/alert/AlertManager');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -92,6 +93,22 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
   console.log(`CORS Origin: ${process.env.CORS_ORIGIN}`);
+
+  // 初始化告警管理器
+  alertManager.initialize();
+});
+
+// 关闭告警管理器
+process.on('SIGTERM', () => {
+  console.log('收到 SIGTERM 信号，正在关闭服务器...');
+  alertManager.shutdown();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('收到 SIGINT 信号，正在关闭服务器...');
+  alertManager.shutdown();
+  process.exit(0);
 });
 
 module.exports = app;
