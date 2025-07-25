@@ -7,6 +7,7 @@ const systemMetricsRoutes = require('./systemMetrics');
 const runnerRoutes = require('./runner');
 const networkTrafficRoutes = require('./networkTraffic');
 const ragRoutes = require('./rag');
+const dockerRoutes = require('./docker');
 
 // 对所有aiops路由应用JWT验证
 router.use(jwtAuthMiddleware);
@@ -16,5 +17,6 @@ router.use('/system-metrics', systemMetricsRoutes);
 router.use('/runner', runnerRoutes);
 router.use('/network-traffic', networkTrafficRoutes);
 router.use('/rag', ragRoutes);
+router.use('/docker', dockerRoutes);
 
 module.exports = router;

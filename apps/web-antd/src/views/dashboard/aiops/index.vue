@@ -20,6 +20,7 @@ import ServiceHealth from './service-health.vue';
 import NetworkTraffic from './network-traffic.vue';
 import ResourceUsage from './resource-usage.vue';
 import LogAnalysis from './log-analysis.vue';
+import DockerStatus from './docker-status.vue';
 
 const { isDark } = usePreferences();
 // 统一定时器刷新时间
@@ -130,7 +131,17 @@ const overviewItems: AnalysisOverviewItem[] = [
       </AnalysisChartCard>
     </div>
 
-    <!-- 第三行：资源使用情况和日志分析 -->
+    <!-- 第三行：Docker状态监控 -->
+    <div class="grid grid-cols-1 gap-6 mb-6">
+      <AnalysisChartCard
+        title="Docker状态监控"
+        :class="cardClasses"
+      >
+        <DockerStatus :refreshInterval="REFRESH_INTERVAL"/>
+      </AnalysisChartCard>
+    </div>
+
+    <!-- 第四行：资源使用情况和日志分析 -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <AnalysisChartCard
         title="资源使用趋势"

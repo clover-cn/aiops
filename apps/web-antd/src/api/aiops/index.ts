@@ -18,6 +18,75 @@ export interface NetworkTraffic {
   };
 }
 
+export interface DockerSystemInfo {
+  containers: {
+    total: number;
+    running: number;
+    stopped: number;
+    paused: number;
+  };
+  images: {
+    total: number;
+  };
+  system: {
+    name: string;
+    serverVersion: string;
+    apiVersion: string;
+    operatingSystem: string;
+    architecture: string;
+    cpus: number;
+    memory: number;
+  };
+  dockerRootDir: string;
+  loggingDriver: string;
+  cgroupDriver: string;
+}
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  startedAt: string;
+  finishedAt: string;
+  ports: any;
+  labels: any;
+  created: string;
+}
+
+export interface DockerInfo {
+  systemInfo: DockerSystemInfo;
+  containerDetails: DockerContainer[];
+  timestamp: string;
+}
+
+export interface DockerContainerStats {
+  cpuUsage: number;
+  memoryUsage: number;
+  memoryLimit: number;
+  networkRx: number;
+  networkTx: number;
+  blockRead: number;
+  blockWrite: number;
+}
+
+export interface DockerContainerDetail {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  startedAt: string;
+  finishedAt: string;
+  ports: any;
+  labels: any;
+  env: string[];
+  cmd: string[];
+  created: string;
+  mounts: any[];
+  networkSettings: any;
+  hostConfig: any;
+}
+
 // RAG相关接口类型定义
 export interface RAGQueryRequest {
   query: string;
@@ -106,6 +175,27 @@ export async function getSystemMetricsApi() {
  */
 export async function getNetworkTrafficApi() {
   return requestClient.get<NetworkTraffic>('/aiops/network-traffic');
+}
+
+/**
+ * 获取Docker状态监控数据
+ */
+export async function getDockerInfoApi() {
+  return requestClient.get<DockerInfo>('/aiops/docker');
+}
+
+/**
+ * 获取特定容器的详细信息
+ */
+export async function getDockerContainerDetailApi(id: string) {
+  return requestClient.get<DockerContainerDetail>(`/aiops/docker/container/${id}`);
+}
+
+/**
+ * 获取容器统计信息
+ */
+export async function getDockerContainerStatsApi(id: string) {
+  return requestClient.get<{ stats: DockerContainerStats; timestamp: string }>(`/aiops/docker/container/${id}/stats`);
 }
 
 /**
