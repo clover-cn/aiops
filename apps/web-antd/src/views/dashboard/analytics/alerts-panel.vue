@@ -49,57 +49,12 @@ const fetchAlerts = async () => {
       alerts.value = (response as any).data.slice(0, 5);
     } else {
       console.error('获取告警数据失败: 响应格式异常');
-      alerts.value = generateMockAlerts();
     }
   } catch (error) {
     console.error('获取告警数据异常:', error);
-    // 如果API异常，使用模拟数据作为后备
-    alerts.value = generateMockAlerts();
   } finally {
     loading.value = false;
   }
-};
-
-/**
- * 生成模拟告警数据（作为后备）
- */
-const generateMockAlerts = (): Alert[] => {
-  const mockAlerts = [
-    {
-      id: `mock-alert-${Date.now()}-1`,
-      key: 'cpu_alert',
-      level: 'critical' as const,
-      title: 'CPU使用率过高',
-      description: 'Web服务器CPU使用率达到92%，超过安全阈值',
-      service: 'Web服务器',
-      metricType: 'cpu',
-      currentValue: 92,
-      threshold: 85,
-      unit: '%',
-      time: new Date().toISOString(),
-      timeDisplay: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-      status: 'active' as const,
-      count: 1
-    },
-    {
-      id: `mock-alert-${Date.now()}-2`,
-      key: 'memory_alert',
-      level: 'warning' as const,
-      title: '内存使用率告警',
-      description: '数据库服务器内存使用率达到78%',
-      service: '数据库服务器',
-      metricType: 'memory',
-      currentValue: 78,
-      threshold: 75,
-      unit: '%',
-      time: new Date().toISOString(),
-      timeDisplay: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-      status: 'active' as const,
-      count: 1
-    }
-  ];
-
-  return mockAlerts.slice(0, 5);
 };
 
 const getLevelColor = (level: string) => {
@@ -162,7 +117,7 @@ onUnmounted(() => {
 
 <template>
   <div class="h-80 overflow-hidden">
-    <div class="mb-4 flex items-center justify-between">
+    <div class="mb-4 flex items-center justify-between mt-2">
       <div class="flex items-center space-x-4">
         <Badge :count="alerts.filter(a => a.level === 'critical').length" :color="getLevelColor('critical')">
           <span :class="themeClasses.badgeText">严重告警</span>
@@ -175,7 +130,7 @@ onUnmounted(() => {
     </div>
 
     <div :class="`h-64 overflow-y-auto scrollbar-thin ${themeClasses.scrollThumb} ${themeClasses.scrollTrack}`">
-      <List :data-source="alerts" size="small">
+      <List :data-source="alerts" size="small" :loading="loading">
         <template #renderItem="{ item }">
           <ListItem :class="`border-b ${themeClasses.itemBorder} px-0 py-3`">
             <ListItem.Meta>
