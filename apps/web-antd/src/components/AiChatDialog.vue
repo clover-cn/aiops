@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, watch, createVNode } from 'vue';
 import {
   Modal,
   Input,
@@ -171,12 +171,14 @@ const pollProcessStatus = async (processId: string, messageId: string) => {
 
       // 检查进程是否还在运行
       const isRunning = hasMoreOutput || status === 'running';
-      
+
       // 检查进程是否还在运行或者超时
-      if (!isRunning || (Date.now() - startTime > maxPollingTime)) {
+      if (!isRunning || Date.now() - startTime > maxPollingTime) {
         // 进程已结束
         messages.value[messageIndex]!.isPolling = false;
-        messages.value[messageIndex]!.executionStatus = error ? 'failed' : 'completed';
+        messages.value[messageIndex]!.executionStatus = error
+          ? 'failed'
+          : 'completed';
 
         // 终止进程（确保清理）
         try {
@@ -631,54 +633,29 @@ const simulateAiResponse = async (userInput: string) => {
             messages.value.push(streamingMessage);
             await nextTick();
             scrollToBottom();
-
-            try {
-              // 启动流式执行
-              const streamResponse = await executeStreamCommandApi(command);
-              console.log('流式执行响应:', streamResponse);
-
-              if (streamResponse.processId) {
-                // 更新消息状态
-                const messageIndex = messages.value.findIndex(
-                  (msg) => msg.id === streamingMessage.id,
-                );
-                if (messageIndex !== -1) {
-                  messages.value[messageIndex]!.processId =
-                    streamResponse.processId;
-                  messages.value[messageIndex]!.content =
-                    '命令已启动，正在获取输出...';
-                  messages.value[messageIndex]!.isExecuting = false;
-                  messages.value[messageIndex]!.isServerCommand = true;
-                  messages.value[messageIndex]!.isPolling = true;
-
-                  await nextTick();
-                  scrollToBottom();
-
-                  // 开始轮询获取进程状态和输出
-                  pollProcessStatus(
-                    streamResponse.processId,
-                    streamingMessage.id,
+            if (jsonData.requiresApproval) {
+              Modal.confirm({
+                centered: true,
+                title: '风险命令',
+                content: `您正在执行一个带有较高风险的命令，请仔细确认是否继续执行：${jsonData.commands.command}`,
+                onOk() {
+                  startStreamingExecution(streamingMessage, jsonData.commands.command);
+                },
+                onCancel() {
+                  // 更新消息状态为已取消
+                  const messageIndex = messages.value.findIndex(
+                    (msg) => msg.id === streamingMessage.id,
                   );
-                }
-              } else {
-                throw new Error(streamResponse.error || '启动流式执行失败');
-              }
-            } catch (error) {
-              console.error('流式执行失败:', error);
-
-              // 更新消息为错误状态
-              const messageIndex = messages.value.findIndex(
-                (msg) => msg.id === streamingMessage.id,
-              );
-              if (messageIndex !== -1) {
-                messages.value[messageIndex]!.content =
-                  `流式执行失败: ${error instanceof Error ? error.message : '未知错误'}`;
-                messages.value[messageIndex]!.isExecuting = false;
-                messages.value[messageIndex]!.executionStatus = 'failed';
-
-                await nextTick();
-                scrollToBottom();
-              }
+                  if (messageIndex !== -1) {
+                    messages.value[messageIndex]!.content = '命令执行已取消';
+                    messages.value[messageIndex]!.isExecuting = false;
+                    messages.value[messageIndex]!.executionStatus = 'failed';
+                  }
+                },
+              });
+            } else {
+              // 直接启动流式执行
+              startStreamingExecution(streamingMessage, jsonData.commands.command);
             }
           }
         }
@@ -742,6 +719,57 @@ const formatTime = (date: Date) => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+/**
+ * 向服务器启动流式执行命令
+ * @param streamingMessage 
+ * @param command 
+ */
+const startStreamingExecution = async (streamingMessage: ChatMessage, command: string) => {
+  try {
+    // 启动流式执行
+    const streamResponse = await executeStreamCommandApi(command);
+    console.log('流式执行响应:', streamResponse);
+
+    if (streamResponse.processId) {
+      // 更新消息状态
+      const messageIndex = messages.value.findIndex(
+        (msg) => msg.id === streamingMessage.id,
+      );
+      if (messageIndex !== -1) {
+        messages.value[messageIndex]!.processId = streamResponse.processId;
+        messages.value[messageIndex]!.content = '命令已启动，正在获取输出...';
+        messages.value[messageIndex]!.isExecuting = false;
+        messages.value[messageIndex]!.isServerCommand = true;
+        messages.value[messageIndex]!.isPolling = true;
+
+        await nextTick();
+        scrollToBottom();
+
+        // 开始轮询获取进程状态和输出
+        pollProcessStatus(streamResponse.processId, streamingMessage.id);
+      }
+    } else {
+      throw new Error(streamResponse.error || '启动流式执行失败');
+    }
+  } catch (error) {
+    console.error('流式执行失败:', error);
+
+    // 更新消息为错误状态
+    const messageIndex = messages.value.findIndex(
+      (msg) => msg.id === streamingMessage.id,
+    );
+    if (messageIndex !== -1) {
+      messages.value[messageIndex]!.content =
+        `流式执行失败: ${error instanceof Error ? error.message : '未知错误'}`;
+      messages.value[messageIndex]!.isExecuting = false;
+      messages.value[messageIndex]!.executionStatus = 'failed';
+
+      await nextTick();
+      scrollToBottom();
+    }
+  }
 };
 
 const input_focus = ref<HTMLElement | null>(null);
