@@ -439,7 +439,8 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
         },
         "requiresApproval": 是否需要人工确认(true/false),
         "riskLevel": "low/medium/high",
-        "isCommand": true
+        "isCommand": true,
+        "isTTY": 是否是交互式命令或需要TTY的命令(true/false),
       }
       \`\`\`
       **普通对话**：直接自然语言回复
@@ -479,7 +480,8 @@ const buildRAGPrompt = async (userInput: string): Promise<string> => {
         },
         "requiresApproval": 是否需要人工确认(true/false),
         "riskLevel": "low/medium/high",
-        "isCommand": true
+        "isCommand": true,
+        "isTTY": 是否是交互式命令或需要TTY的命令(true/false),
       }
       \`\`\`
       **普通对话**：直接自然语言回复
@@ -601,7 +603,6 @@ const simulateAiResponse = async (userInput: string) => {
           if (jsonData.isCommand) {
             console.log('AI回复的JSON数据:', jsonData);
             console.log('执行命令:', jsonData.commands.command);
-
             // 移除包含JSON数据的AI消息，直接显示执行状态
             const jsonMessageIndex = messages.value.findIndex(
               (msg) => msg.id === aiMessage.id,
@@ -631,6 +632,16 @@ const simulateAiResponse = async (userInput: string) => {
             };
 
             messages.value.push(streamingMessage);
+
+            // 如果是交互式命令，直接返回错误
+            if (jsonData.isTTY) {
+              // 更新消息为错误状态
+              updateMessageStatusOnError(
+                streamingMessage,
+                new Error('暂时不支持执行交互式命令，请使用非交互式命令。'),
+              );
+              return;
+            }
             await nextTick();
             scrollToBottom();
             if (jsonData.requiresApproval) {
@@ -639,7 +650,10 @@ const simulateAiResponse = async (userInput: string) => {
                 title: '风险命令',
                 content: `您正在执行一个带有较高风险的命令，请仔细确认是否继续执行：${jsonData.commands.command}`,
                 onOk() {
-                  startStreamingExecution(streamingMessage, jsonData.commands.command);
+                  startStreamingExecution(
+                    streamingMessage,
+                    jsonData.commands.command,
+                  );
                 },
                 onCancel() {
                   // 更新消息状态为已取消
@@ -655,7 +669,10 @@ const simulateAiResponse = async (userInput: string) => {
               });
             } else {
               // 直接启动流式执行
-              startStreamingExecution(streamingMessage, jsonData.commands.command);
+              startStreamingExecution(
+                streamingMessage,
+                jsonData.commands.command,
+              );
             }
           }
         }
@@ -723,10 +740,13 @@ const formatTime = (date: Date) => {
 
 /**
  * 向服务器启动流式执行命令
- * @param streamingMessage 
- * @param command 
+ * @param streamingMessage
+ * @param command
  */
-const startStreamingExecution = async (streamingMessage: ChatMessage, command: string) => {
+const startStreamingExecution = async (
+  streamingMessage: ChatMessage,
+  command: string,
+) => {
   try {
     // 启动流式执行
     const streamResponse = await executeStreamCommandApi(command);
@@ -757,18 +777,29 @@ const startStreamingExecution = async (streamingMessage: ChatMessage, command: s
     console.error('流式执行失败:', error);
 
     // 更新消息为错误状态
-    const messageIndex = messages.value.findIndex(
-      (msg) => msg.id === streamingMessage.id,
-    );
-    if (messageIndex !== -1) {
-      messages.value[messageIndex]!.content =
-        `流式执行失败: ${error instanceof Error ? error.message : '未知错误'}`;
-      messages.value[messageIndex]!.isExecuting = false;
-      messages.value[messageIndex]!.executionStatus = 'failed';
+    updateMessageStatusOnError(streamingMessage, error);
+  }
+};
 
-      await nextTick();
-      scrollToBottom();
-    }
+/**
+ * 执行失败更新消息状态
+ */
+const updateMessageStatusOnError = async (
+  streamingMessage: ChatMessage,
+  error: any,
+) => {
+  // 更新消息为错误状态
+  const messageIndex = messages.value.findIndex(
+    (msg) => msg.id === streamingMessage.id,
+  );
+  if (messageIndex !== -1) {
+    messages.value[messageIndex]!.content =
+      `流式执行失败: ${error instanceof Error ? error.message : '未知错误'}`;
+    messages.value[messageIndex]!.isExecuting = false;
+    messages.value[messageIndex]!.executionStatus = 'failed';
+
+    await nextTick();
+    scrollToBottom();
   }
 };
 
